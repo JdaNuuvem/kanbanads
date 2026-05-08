@@ -38,8 +38,8 @@ router.get('/', requireAuth, async (req, res, next) => {
     );
 
     // Total count
-    const countWhere = conditions.slice(0, -0).join(' AND ');
-    const countValues = values.slice(0, -2);
+    const countWhere = conditions.join(' AND ');
+    const countValues = values.slice(0, p - 1);
     const { rows: countRows } = await pool.query(
       `SELECT COUNT(*) FROM notifications n WHERE ${countWhere}`,
       countValues,

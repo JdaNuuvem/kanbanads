@@ -150,7 +150,7 @@ router.get('/products/:id', requireAuth, async (req, res, next) => {
          ) AS metrics,
          COALESCE(
            (SELECT json_agg(row_to_json(c.*) ORDER BY c.created_at DESC)
-            FROM (SELECT id, product_id, folder, name, type, version, status, size, body_text, link, tags, ctr, cpm, spent, added_by, added_at, updated_at FROM creatives WHERE product_id = p.id ORDER BY created_at DESC) c),
+            FROM (SELECT id, product_id, folder, name, type, version, status, size, body_text, link, tags, ctr, cpm, spent, added_by, added_at, updated_at FROM creatives WHERE product_id = p.id ORDER BY added_at DESC) c),
            '[]'::json
          ) AS creatives,
          COALESCE(
