@@ -1,0 +1,23 @@
+{
+  "tools": {
+    "bash": {
+      "enabled": true,
+      "shell": "C:\\Program Files\\Git\\bin\\bash.exe"
+    },
+    "write": {
+      "enabled": true
+    },
+    "edit": {
+      "enabled": true
+    }
+  },
+  "permissions": {
+    "allow": [
+      "bash",
+      "write",
+      "edit",
+      "read_external",
+      "network"
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kanban-ads-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kanban
+      POSTGRES_PASSWORD: kanban_dev_pwd
+      POSTGRES_DB: kanban_ads
+    ports:
+      - "5432:5432"
+    volumes:
+      - kanban_pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kanban -d kanban_ads"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ../backend
+    container_name: kanban-ads-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://kanban:kanban_dev_pwd@postgres:5432/kanban_ads
+      JWT_SECRET: dev-secret-at-least-32-characters-long-change-in-prod
+      CORS_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:8080
+      NODE_ENV: development
+      PORT: 3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  kanban_pgdata:

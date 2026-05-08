@@ -1,0 +1,95 @@
+name: CI/CD — Backend
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'backend/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx eslint src/ || true
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kanban
+          POSTGRES_PASSWORD: kanban_ci_pwd
+          POSTGRES_DB: kanban_ads_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Run migrations
+        run: npx node src/config/migrate.js
+        env:
+          DATABASE_URL: postgresql://kanban:kanban_ci_pwd@localhost:5432/kanban_ads_test
+      - name: Run tests
+        run: npm test
+        env:
+          DATABASE_URL: postgresql://kanban:kanban_ci_pwd@localhost:5432/kanban_ads_test
+          JWT_SECRET: ci-secret-key
+          CORS_ORIGINS: '*'
+          NODE_ENV: test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t kanban-ads-api:${{ github.sha }} backend/
+
+  deploy:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy (placeholder)
+        run: |
+          echo "Deploy step — configure for your hosting:"
+          echo "  Railway: gh workflow run + railway up"
+          echo "  Fly.io:  flyctl deploy"
+          echo "  Render:  push to deploy branch"
+          echo "  Docker:  docker push + ssh pull"
