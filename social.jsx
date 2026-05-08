@@ -76,8 +76,8 @@ const MentionTextarea = ({ value, onChange, users, placeholder, onSubmit, classN
   const matches = _useMemo(() => {
     if (!suggest) return [];
     const q = suggest.query.toLowerCase();
-    return users
-      .filter(u => u.name.toLowerCase().includes(q) || u.name.split(' ')[0].toLowerCase().startsWith(q))
+    return (users || [])
+      .filter(u => u.name.toLowerCase().includes(q) || (u.name.split(' ')[0] || '').toLowerCase().startsWith(q))
       .slice(0, 5);
   }, [suggest, users]);
 
@@ -86,7 +86,7 @@ const MentionTextarea = ({ value, onChange, users, placeholder, onSubmit, classN
     if (!el) return;
     const pos = el.selectionStart;
     const before = el.value.slice(0, pos);
-    const m = before.match(/@([\w]*)$/);
+    const m = before.match(/@([\w\u00C0-\u00FF]*)$/);
     if (m) {
       // Position the dropdown under the caret roughly
       setSuggest({ query: m[1], start: pos - m[0].length });
@@ -144,7 +144,7 @@ const MentionTextarea = ({ value, onChange, users, placeholder, onSubmit, classN
               <Avatar user={u} size={20} />
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <span style={{ fontSize: 13, fontWeight: 500 }}>{u.name}</span>
-                <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{ROLE_LABELS[u.role]}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{(window.ROLE_LABELS || {})[u.role] || u.role}</span>
               </div>
               {i === activeIdx && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>↵</span>}
             </div>
@@ -247,7 +247,7 @@ const MultiAssigneeSelect = ({ value = [], onChange, users, label }) => {
                 <Avatar user={u} size={20} />
                 <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                   <span style={{ fontSize: 13 }}>{u.name}</span>
-                  <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{ROLE_LABELS[u.role]}</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{(window.ROLE_LABELS || {})[u.role] || u.role}</span>
                 </div>
                 {active && <Icon name="check" size={14} style={{ color: 'var(--accent)' }} />}
               </div>
