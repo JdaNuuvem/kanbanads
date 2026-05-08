@@ -18,7 +18,7 @@ const ALLOWED_MIMES = [
   'application/pdf',
   'application/octet-stream',
 ];
-const MAX_SIZE = 100 * 1024 * 1024; // 100 MB
+const MAX_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
