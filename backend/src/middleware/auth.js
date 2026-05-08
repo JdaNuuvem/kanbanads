@@ -37,10 +37,6 @@ export async function requireAuth(req, _res, next) {
 
     req.user = rows[0];
 
-    // Set RLS context
-    await pool.query('SET app.current_user_id = $1', [req.user.id]);
-    await pool.query('SET app.current_role = $1', [req.user.role]);
-
     next();
   } catch (err) {
     if (err instanceof AppError) return next(err);
