@@ -21,6 +21,7 @@ const PORT = parseInt(process.env.PORT) || 3001;
 initSentry(app);
 
 app.use(helmet({
+  strictTransportSecurity: false,
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
