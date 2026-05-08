@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
@@ -22,16 +23,8 @@ initSentry(app);
 
 app.use(helmet({
   strictTransportSecurity: false,
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'", "http://localhost:3001"],
-    },
-  },
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
 }));
 
 const origins = (process.env.CORS_ORIGINS || '*').split(',').map((s) => s.trim());
@@ -47,9 +40,31 @@ app.use(globalLimiter);
 app.use(metricsMiddleware);
 app.get('/metrics', metricsHandler);
 
-// Serve frontend static files
+// Serve frontend - root route with inlined JSX to avoid HTTPS upgrade issues
 const publicDir = path.join(__dirname, '..', 'public');
-app.get('/', (_req, res) => res.sendFile(path.join(publicDir, 'Kanban Ads & Dropshipping.html')));
+
+app.get('/konbam', (_req, res) => res.sendFile(path.join(publicDir, 'Kanban Ads & Dropshipping.html')));
+
+const jsxOrder = ['icons.jsx','utils.jsx','users.jsx','api.jsx','login.jsx','social.jsx','data.jsx','card.jsx','creative.jsx','tabs.jsx','modal.jsx','views.jsx','app.jsx'];
+
+app.get('/', (_req, res) => {
+  try {
+    let html = fs.readFileSync(path.join(publicDir, 'Kanban Ads & Dropshipping.html'), 'utf-8');
+    let inlineScripts = '';
+    for (const file of jsxOrder) {
+      const content = fs.readFileSync(path.join(publicDir, file), 'utf-8');
+      inlineScripts += `\n<script type="text/babel" data-inline="${file}">${content}</script>`;
+    }
+    // Remove external JSX script tags and replace with inlined versions
+    html = html.replace(/<script type="text\/babel" src="[^"]+"><\/script>/g, '');
+    html = html.replace('</body>', inlineScripts + '\n</body>');
+    res.type('html').send(html);
+  } catch (err) {
+    logger.error(err, 'Failed to serve frontend');
+    res.status(500).send('Frontend error');
+  }
+});
+
 app.use(express.static(publicDir));
 
 // Request logging
