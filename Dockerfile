@@ -17,7 +17,7 @@ RUN apk add --no-cache postgresql-client curl
 COPY --from=build /app/node_modules ./node_modules
 COPY backend/package.json ./
 COPY backend/src ./src
-COPY backend/migrations ./migrations
+COPY backend/migrations ./src/migrations
 
 EXPOSE 3001
 
