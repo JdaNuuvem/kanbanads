@@ -20,7 +20,18 @@ const PORT = parseInt(process.env.PORT) || 3001;
 // Sentry must be first
 initSentry(app);
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "http://localhost:3001"],
+    },
+  },
+}));
 
 const origins = (process.env.CORS_ORIGINS || '*').split(',').map((s) => s.trim());
 app.use(cors({
