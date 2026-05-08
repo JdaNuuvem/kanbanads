@@ -92,8 +92,7 @@ CREATE INDEX idx_products_stage          ON products(stage_id) WHERE archived_at
 CREATE INDEX idx_products_favorite       ON products(favorite) WHERE favorite = true;
 CREATE INDEX idx_products_entered_stage  ON products(stage_id, entered_stage_at);
 CREATE INDEX idx_products_name_trgm      ON products USING gin (name gin_trgm_ops);
--- (depende da extensão pg_trgm; criar se quiser busca fuzzy)
--- CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- M2M: produto ↔ labels
 CREATE TABLE product_labels (
