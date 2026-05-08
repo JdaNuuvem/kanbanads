@@ -4,8 +4,8 @@ import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-// GET /notifications
-router.get('/notifications', requireAuth, async (req, res, next) => {
+// GET /
+router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { unreadOnly, limit: limitStr, offset: offsetStr } = req.query;
 
@@ -52,8 +52,8 @@ router.get('/notifications', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /notifications/count
-router.get('/notifications/count', requireAuth, async (req, res, next) => {
+// GET /count
+router.get('/count', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       'SELECT unread FROM v_unread_counts WHERE user_id = $1',
@@ -63,8 +63,8 @@ router.get('/notifications/count', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /notifications/:id/read
-router.patch('/notifications/:id/read', requireAuth, async (req, res, next) => {
+// PATCH /:id/read
+router.patch('/:id/read', requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
 
@@ -80,8 +80,8 @@ router.patch('/notifications/:id/read', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /notifications/read-all
-router.post('/notifications/read-all', requireAuth, async (req, res, next) => {
+// POST /read-all
+router.post('/read-all', requireAuth, async (req, res, next) => {
   try {
     await pool.query(
       `UPDATE notifications SET read = true, read_at = now()
@@ -92,8 +92,8 @@ router.post('/notifications/read-all', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// DELETE /notifications/:id
-router.delete('/notifications/:id', requireAuth, async (req, res, next) => {
+// DELETE /:id
+router.delete('/:id', requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
 

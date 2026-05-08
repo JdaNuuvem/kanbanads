@@ -4,8 +4,8 @@ import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-// GET /activity — cursor pagination
-router.get('/activity', requireAuth, async (req, res, next) => {
+// GET / — cursor pagination
+router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { type, user, product, from, to, limit: limitStr, cursor } = req.query;
     const conditions = [];
@@ -61,8 +61,8 @@ router.get('/activity', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /activity/me — personal feed
-router.get('/activity/me', requireAuth, async (req, res, next) => {
+// GET /me — personal feed
+router.get('/me', requireAuth, async (req, res, next) => {
   try {
     const { limit: limitStr, cursor } = req.query;
     const limit = Math.min(parseInt(limitStr) || 50, 200);
