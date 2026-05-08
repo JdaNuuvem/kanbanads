@@ -1,7 +1,7 @@
 // API Client — fetch wrapper with auth, retry, token refresh, SSE
 // Substitui localStorage como fonte de dados
 
-const API_BASE = window.KANBAN_API_URL || 'http://localhost:3001';
+const API_BASE = window.KANBAN_API_URL != null ? window.KANBAN_API_URL : 'http://localhost:3001';
 const TOKEN_KEY = 'kanban_ads_token_v1';
 const REFRESH_MARGIN = 300; // renovar token 5 min antes de expirar
 
