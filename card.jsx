@@ -1,5 +1,5 @@
 // Card with metrics, time-in-stage, checklist progress, assignee
-const ProductCard = ({ product, onOpen, onToggleFav, onDragStart, onDragEnd, isDragging, compact, users = [] }) => {
+const ProductCard = ({ product, onOpen, onToggleFav, onOpenChecklist, onDragStart, onDragEnd, isDragging, compact, users = [] }) => {
   const assigneeIds = product.assigneeIds || [];
   const folderCounts = FOLDERS.map(f => ({ name: f, count: product.creatives[f]?.length || 0 }));
   const totalCreatives = folderCounts.reduce((s, f) => s + f.count, 0);
@@ -70,7 +70,9 @@ const ProductCard = ({ product, onOpen, onToggleFav, onDragStart, onDragEnd, isD
         </span>
         {isStale && <span className="card-stale-badge">parado</span>}
         {checklistItems.length > 0 && (
-          <div className="card-checklist-mini" title={`Checklist: ${doneCount}/${checklistItems.length}`}>
+          <div className="card-checklist-mini" title={`Checklist: ${doneCount}/${checklistItems.length}`}
+               onClick={(e) => { e.stopPropagation(); onOpenChecklist && onOpenChecklist(product.id); }}
+               style={{ cursor: 'pointer' }}>
             <div className="card-checklist-mini-fill" style={{ width: `${checklistPct}%` }} />
           </div>
         )}

@@ -149,43 +149,139 @@ const MetricsTab = ({ product, onUpdate }) => {
 };
 
 // Checklist tab
-const ChecklistTab = ({ product, onUpdate }) => {
-  const items = STAGE_CHECKLISTS[product.column] || [];
-  const checklist = product.checklist || {};
-  const doneCount = items.filter(i => checklist[i.id]).length;
-  const pct = items.length ? (doneCount / items.length) * 100 : 0;
+const ChecklistTab = ({ product, onUpdate, inPopup }) => {
+  const [newText, setNewText] = React.useState('');
+  const [editingId, setEditingId] = React.useState(null);
+  const [editText, setEditText] = React.useState('');
+  const [error, setError] = React.useState(null);
 
-  const toggle = (id) => {
-    onUpdate({ ...product, checklist: { ...checklist, [id]: !checklist[id] } });
+  const templates = STAGE_CHECKLISTS[product.column] || [];
+  const checklist = product.checklist || {};
+
+  // Merge template items with custom items from checklist
+  const allItems = React.useMemo(() => {
+    const map = new Map();
+    for (const t of templates) map.set(t.id, { id: t.id, text: t.text, isTemplate: true });
+    for (const [key, val] of Object.entries(checklist)) {
+      if (!map.has(key)) map.set(key, { id: key, text: val.text || key, isTemplate: false, done: val.done });
+      else {
+        const existing = map.get(key);
+        map.set(key, { ...existing, done: typeof val === 'object' ? val.done : val });
+      }
+    }
+    return [...map.values()].map(item => ({
+      ...item,
+      done: typeof checklist[item.id] === 'object' ? !!checklist[item.id]?.done : !!checklist[item.id],
+    }));
+  }, [templates, checklist]);
+
+  const doneCount = allItems.filter(i => i.done).length;
+  const pct = allItems.length ? (doneCount / allItems.length) * 100 : 0;
+
+  const toggle = async (itemId, currentDone) => {
+    const newDone = !currentDone;
+    onUpdate({ ...product, checklist: { ...checklist, [itemId]: { ...(checklist[itemId] || {}), done: newDone } } });
+    try { await apiProducts.toggleChecklist(product.id, itemId, newDone); } catch { setError('Erro ao salvar'); }
   };
 
-  return (
-    <div style={{ padding: '20px 24px', overflow: 'auto', flex: 1, maxWidth: 700 }}>
-      <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>Checklist do estágio: {COLUMNS.find(c => c.id === product.column)?.title}</h3>
-      <p style={{ color: 'var(--text-3)', fontSize: 12, margin: '0 0 16px' }}>
-        Itens essenciais para validar antes de avançar de estágio.
-      </p>
+  const addItem = async () => {
+    const text = newText.trim();
+    if (!text) return;
+    const itemId = 'custom_' + Date.now();
+    onUpdate({ ...product, checklist: { ...checklist, [itemId]: { done: false, text } } });
+    setNewText('');
+    try { await apiProducts.addChecklistItem(product.id, itemId, text); } catch { setError('Erro ao adicionar'); }
+  };
+
+  const startEdit = (item) => { setEditingId(item.id); setEditText(item.text); };
+  const saveEdit = async (itemId) => {
+    const text = editText.trim();
+    if (!text) return;
+    onUpdate({ ...product, checklist: { ...checklist, [itemId]: { ...(checklist[itemId] || {}), text } } });
+    setEditingId(null);
+  };
+  const cancelEdit = () => { setEditingId(null); setEditText(''); };
+
+  const removeItem = async (itemId) => {
+    const next = { ...checklist };
+    delete next[itemId];
+    onUpdate({ ...product, checklist: next });
+    try { await apiProducts.removeChecklistItem(product.id, itemId); } catch { setError('Erro ao remover'); }
+  };
+
+  const content = (
+    <div style={inPopup ? { padding: 0 } : { padding: '20px 24px', overflow: 'auto', flex: 1, maxWidth: 700 }}>
+      {!inPopup && <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>Checklist do estágio: {COLUMNS.find(c => c.id === product.column)?.title}</h3>}
+      {!inPopup && <p style={{ color: 'var(--text-3)', fontSize: 12, margin: '0 0 16px' }}>Itens essenciais para validar antes de avançar de estágio.</p>}
+      {error && <div style={{ padding: '6px 10px', marginBottom: 8, background: 'var(--danger-dim)', color: 'var(--danger)', borderRadius: 6, fontSize: 12 }}>{error} <button onClick={() => setError(null)} style={{ marginLeft: 8, color: 'inherit', cursor: 'pointer' }}>×</button></div>}
       <div className="checklist-progress">
         <div className="checklist-progress-bar"><div className="checklist-progress-fill" style={{ width: `${pct}%` }} /></div>
-        <span className="checklist-progress-text">{doneCount}/{items.length} concluídos</span>
+        <span className="checklist-progress-text">{doneCount}/{allItems.length} concluídos</span>
       </div>
       <div className="checklist">
-        {items.map(item => {
-          const done = !!checklist[item.id];
+        {allItems.map(item => {
+          const done = item.done;
           return (
-            <div key={item.id} className={`checklist-item ${done ? 'done' : ''}`} onClick={() => toggle(item.id)}>
-              <div className="checklist-checkbox"><Icon name="check" size={12} /></div>
-              <span className="checklist-text">{item.text}</span>
+            <div key={item.id} className={`checklist-item ${done ? 'done' : ''}`}>
+              <div className="checklist-checkbox" onClick={() => toggle(item.id, done)}
+                   style={{ cursor: 'pointer' }}><Icon name="check" size={12} /></div>
+              {editingId === item.id ? (
+                <>
+                  <input value={editText} onChange={e => setEditText(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveEdit(item.id); if (e.key === 'Escape') cancelEdit(); }}
+                    style={{ flex: 1, background: 'var(--bg-1)', border: '1px solid var(--border-strong)', borderRadius: 4, color: 'var(--text-0)', fontSize: 13, padding: '4px 8px', outline: 'none' }} />
+                  <button className="btn btn-sm btn-ghost" onClick={() => saveEdit(item.id)}><Icon name="check" size={12} /></button>
+                  <button className="btn btn-sm btn-ghost" onClick={cancelEdit}><Icon name="close" size={12} /></button>
+                </>
+              ) : (
+                <>
+                  <span className="checklist-text">{item.text}</span>
+                  <button className="btn btn-sm btn-ghost btn-icon" onClick={() => startEdit(item)} title="Editar"><Icon name="edit" size={11} /></button>
+                  <button className="btn btn-sm btn-ghost btn-icon" onClick={() => removeItem(item.id)} title="Remover"><Icon name="trash" size={11} /></button>
+                </>
+              )}
             </div>
           );
         })}
-        {items.length === 0 && (
+        {allItems.length === 0 && !inPopup && (
           <div className="empty"><div className="empty-text">Sem checklist para este estágio.</div></div>
         )}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <input value={newText} onChange={e => setNewText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') addItem(); }}
+          placeholder="Novo item..."
+          style={{ flex: 1, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-0)', fontSize: 12, padding: '6px 10px', outline: 'none' }} />
+        <button className="btn btn-sm btn-primary" onClick={addItem}><Icon name="plus" size={12} /> Adicionar</button>
+      </div>
+    </div>
+  );
+
+  return inPopup ? content : content;
+};
+
+window.MetricsTab = MetricsTab;
+window.ChecklistTab = ChecklistTab;
+
+// Floating checklist popup
+const ChecklistPopup = ({ product, onUpdate, onClose }) => {
+  React.useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop" style={{ zIndex: 200, alignItems: 'flex-start', paddingTop: '10vh' }} onClick={onClose}>
+      <div className="mini-modal" style={{ width: 420, maxHeight: '70vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ margin: 0, flex: 1 }}>Checklist — {product.name}</h3>
+          <button className="modal-close" onClick={onClose}><Icon name="close" size={16} /></button>
+        </div>
+        <ChecklistTab product={product} onUpdate={onUpdate} inPopup />
       </div>
     </div>
   );
 };
 
-window.MetricsTab = MetricsTab;
-window.ChecklistTab = ChecklistTab;
+window.ChecklistPopup = ChecklistPopup;

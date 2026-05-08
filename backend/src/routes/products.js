@@ -612,9 +612,10 @@ router.put('/products/:id/labels', requireAuth, validate(labelsSchema), async (r
 
 // ===== PATCH /products/:id/checklist/:itemId =====
 
-const checklistSchema = z.object({
+const checklistToggleSchema = z.object({
   body: z.object({
-    done: z.boolean(),
+    done: z.boolean().optional(),
+    text: z.string().min(1).max(500).optional(),
   }),
   params: z.object({
     id: z.string().uuid(),
@@ -622,22 +623,82 @@ const checklistSchema = z.object({
   }),
 });
 
-router.patch('/products/:id/checklist/:itemId', requireAuth, validate(checklistSchema), async (req, res, next) => {
+router.patch('/products/:id/checklist/:itemId', requireAuth, validate(checklistToggleSchema), async (req, res, next) => {
   try {
     const { id, itemId } = req.validated.params;
-    const { done } = req.validated.body;
+    const { done, text } = req.validated.body;
+
+    if (done !== undefined) {
+      const { rows } = await pool.query(
+        `INSERT INTO product_checklist (product_id, item_id, done, done_at, done_by)
+         VALUES ($1, $2, $3, CASE WHEN $3 THEN now() ELSE NULL END, CASE WHEN $3 THEN $4 ELSE NULL END)
+         ON CONFLICT (product_id, item_id)
+         DO UPDATE SET done = $3, done_at = CASE WHEN $3 THEN now() ELSE NULL END,
+                       done_by = CASE WHEN $3 THEN $4 ELSE NULL END
+         RETURNING *`,
+        [id, itemId, done, req.user.id],
+      );
+      return res.json({ checklist_item: rows[0] });
+    }
+
+    if (text !== undefined) {
+      const { rows } = await pool.query(
+        `INSERT INTO product_checklist (product_id, item_id, done)
+         VALUES ($1, $2, false)
+         ON CONFLICT (product_id, item_id) DO NOTHING
+         RETURNING *`,
+        [id, itemId],
+      );
+      return res.json({ checklist_item: rows[0] || { product_id: id, item_id: itemId, text } });
+    }
+
+    res.status(400).json({ error: 'done or text required' });
+  } catch (err) { next(err); }
+});
+
+// ===== POST /products/:id/checklist =====
+
+const createChecklistSchema = z.object({
+  body: z.object({
+    item_id: z.string().min(1).max(100),
+    text: z.string().min(1).max(500),
+  }),
+  params: z.object({ id: z.string().uuid() }),
+});
+
+router.post('/products/:id/checklist', requireAuth, validate(createChecklistSchema), async (req, res, next) => {
+  try {
+    const { id } = req.validated.params;
+    const { item_id, text } = req.validated.body;
 
     const { rows } = await pool.query(
-      `INSERT INTO product_checklist (product_id, item_id, done, done_at, done_by)
-       VALUES ($1, $2, $3, CASE WHEN $3 THEN now() ELSE NULL END, CASE WHEN $3 THEN $4 ELSE NULL END)
-       ON CONFLICT (product_id, item_id)
-       DO UPDATE SET done = $3, done_at = CASE WHEN $3 THEN now() ELSE NULL END,
-                     done_by = CASE WHEN $3 THEN $4 ELSE NULL END
+      `INSERT INTO product_checklist (product_id, item_id, done)
+       VALUES ($1, $2, false)
+       ON CONFLICT (product_id, item_id) DO UPDATE SET done = false
        RETURNING *`,
-      [id, itemId, done, req.user.id],
+      [id, item_id],
     );
 
-    res.json({ checklist_item: rows[0] });
+    res.status(201).json({ checklist_item: rows[0] });
+  } catch (err) { next(err); }
+});
+
+// ===== DELETE /products/:id/checklist/:itemId =====
+
+router.delete('/products/:id/checklist/:itemId', requireAuth, async (req, res, next) => {
+  try {
+    const { id, itemId } = req.params;
+
+    const { rows } = await pool.query(
+      'DELETE FROM product_checklist WHERE product_id = $1 AND item_id = $2 RETURNING *',
+      [id, itemId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Item não encontrado', code: 'NOT_FOUND' });
+    }
+
+    res.json({ deleted: true, checklist_item: rows[0] });
   } catch (err) { next(err); }
 });
 

@@ -141,6 +141,8 @@ const apiProducts = {
   setAssignees: (id, userIds) => api.put(`/products/${id}/assignees`, { userIds }),
   setLabels: (id, labelIds) => api.put(`/products/${id}/labels`, { labelIds }),
   toggleChecklist: (id, itemId, done) => api.patch(`/products/${id}/checklist/${itemId}`, { done }),
+  addChecklistItem: (id, itemId, text) => api.post(`/products/${id}/checklist`, { item_id: itemId, text }),
+  removeChecklistItem: (id, itemId) => api.delete(`/products/${id}/checklist/${itemId}`),
   history: (id) => api.get(`/products/${id}/history`),
 };
 

@@ -35,6 +35,7 @@ const App = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   const [showManageTeam, setShowManageTeam] = useState(false);
+  const [checklistPopupId, setChecklistPopupId] = useState(null);
 
   // ---- Auto-login check ----
   useEffect(() => {
@@ -511,6 +512,7 @@ const App = () => {
                   {items.map((p) => (
                     <ProductCard key={p.id} product={p} compact={compact} users={users}
                       onOpen={setOpenProductId} onToggleFav={toggleFavorite}
+                      onOpenChecklist={setChecklistPopupId}
                       onDragStart={handleDragStart} onDragEnd={handleDragEnd}
                       isDragging={draggingId === p.id} />
                   ))}
@@ -552,6 +554,12 @@ const App = () => {
           onUpdate={(next) => setUsers(next)}
         />
       )}
+
+      {checklistPopupId && (() => {
+        const cp = products.find(p => p.id === checklistPopupId);
+        if (!cp) return null;
+        return <ChecklistPopup product={cp} onUpdate={updateProduct} onClose={() => setChecklistPopupId(null)} />;
+      })()}
     </div>
   );
 };
