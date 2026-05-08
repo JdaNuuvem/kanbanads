@@ -18,6 +18,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY backend/package.json ./
 COPY backend/src ./src
 COPY backend/migrations ./src/migrations
+COPY *.html *.css *.jsx ./public/
 
 EXPOSE 3001
 

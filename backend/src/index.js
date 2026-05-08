@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -9,6 +11,8 @@ import logger from './lib/logger.js';
 import { initSentry, setupSentryErrorHandler } from './lib/sentry.js';
 import { metricsMiddleware, metricsHandler } from './lib/metrics.js';
 import { startScheduler } from './jobs/index.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const PORT = parseInt(process.env.PORT) || 3001;
@@ -30,6 +34,10 @@ app.use(globalLimiter);
 // Prometheus metrics
 app.use(metricsMiddleware);
 app.get('/metrics', metricsHandler);
+
+// Serve frontend static files
+const publicDir = path.join(__dirname, '..', 'public');
+app.use(express.static(publicDir));
 
 // Request logging
 app.use((req, _res, next) => {
