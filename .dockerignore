@@ -7,9 +7,6 @@ tests/
 .vitest/
 .github/
 db/
-*.jsx
-*.css
-*.html
 !backend/
 backend/node_modules/
 backend/.env
