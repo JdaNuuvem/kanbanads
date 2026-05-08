@@ -13,8 +13,10 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const ALLOWED_MIMES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-  'video/mp4', 'video/quicktime', 'video/webm',
+  'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo',
+  'application/zip', 'application/x-zip-compressed', 'application/x-rar-compressed',
   'application/pdf',
+  'application/octet-stream',
 ];
 const MAX_SIZE = 100 * 1024 * 1024; // 100 MB
 

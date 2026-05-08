@@ -59,19 +59,106 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
   const goPrev = () => colIdx > 0 && moveColumn(COLUMNS[colIdx - 1].id);
   const goNext = () => colIdx < COLUMNS.length - 1 && moveColumn(COLUMNS[colIdx + 1].id);
 
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState(null);
+  const fileInputRef = React.useRef(null);
+
+  const formatSize = (bytes) => {
+    if (!bytes) return '0 B';
+    const units = ['B','KB','MB','GB'];
+    let i = 0;
+    let size = bytes;
+    while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+    return `${size.toFixed(1)} ${units[i]}`;
+  };
+
+  const detectType = (file) => {
+    if (!file) return 'image';
+    if (file.type.startsWith('video/')) return 'video';
+    if (file.type.startsWith('image/')) return 'image';
+    const ext = (file.name || '').split('.').pop().toLowerCase();
+    if (['mp4','mov','webm','avi'].includes(ext)) return 'video';
+    if (['jpg','jpeg','png','gif','webp','bmp'].includes(ext)) return 'image';
+    if (['zip','rar'].includes(ext)) return 'image'; // zip tratado como pacote de imagem
+    return 'image';
+  };
+
+  const uploadFile = async (file) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/uploads', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Falha no upload');
+      }
+      const data = await res.json();
+      return data;
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const addCreative = (folder) => {
-    const types = ['video', 'image', 'copy'];
-    const type = types[Math.floor(Math.random() * 3)];
-    const newC = {
-      id: `${folder}-${Date.now()}`,
-      name: type === 'copy' ? `Copy ${folder} ${(product.creatives[folder]?.length || 0) + 1}` : `${type === 'video' ? 'VID' : 'IMG'}_${folder}_${String((product.creatives[folder]?.length || 0) + 1).padStart(2, '0')}`,
-      type, version: 1, status: 'rascunho',
-      size: type === 'video' ? `${(Math.random()*30+5).toFixed(1)} MB` : type === 'image' ? `${(Math.random()*2+0.4).toFixed(1)} MB` : '—',
-      text: type === 'copy' ? '' : null, link: '', tags: [],
-      metrics: { ctr: '0.00', cpm: '0.00', spent: '0.00' },
-      addedAt: new Date().toISOString(),
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.accept = 'video/mp4,video/webm,video/quicktime,image/jpeg,image/png,image/gif,image/webp,.zip';
+    picker.multiple = false;
+    picker.onchange = async () => {
+      const file = picker.files[0];
+      if (!file) return;
+      try {
+        const uploaded = await uploadFile(file);
+        const type = detectType(file);
+        const newC = {
+          id: `${folder}-${Date.now()}`,
+          name: file.name,
+          type,
+          version: 1,
+          status: 'rascunho',
+          size: formatSize(file.size),
+          text: null,
+          link: uploaded.url,
+          tags: [],
+          metrics: { ctr: '0.00', cpm: '0.00', spent: '0.00' },
+          addedAt: new Date().toISOString(),
+        };
+        onUpdate({ ...product, creatives: { ...product.creatives, [folder]: [...(product.creatives[folder] || []), newC] } });
+      } catch (err) {
+        setUploadError(err.message || 'Erro no upload');
+        setTimeout(() => setUploadError(null), 4000);
+      }
     };
-    onUpdate({ ...product, creatives: { ...product.creatives, [folder]: [...(product.creatives[folder] || []), newC] } });
+    picker.click();
+  };
+
+  const uploadAndCreate = async (folder, file) => {
+    try {
+      const uploaded = await uploadFile(file);
+      const type = detectType(file);
+      const newC = {
+        id: `${folder}-${Date.now()}`,
+        name: file.name,
+        type,
+        version: 1,
+        status: 'rascunho',
+        size: formatSize(file.size),
+        text: null,
+        link: uploaded.url,
+        tags: [],
+        metrics: { ctr: '0.00', cpm: '0.00', spent: '0.00' },
+        addedAt: new Date().toISOString(),
+      };
+      onUpdate({ ...product, creatives: { ...product.creatives, [folder]: [...(product.creatives[folder] || []), newC] } });
+    } catch (err) {
+      setUploadError(err.message || 'Erro no upload');
+      setTimeout(() => setUploadError(null), 4000);
+    }
   };
 
   const updateCreative = (folder, updated) => {
@@ -247,13 +334,17 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                     </button>
                   </div>
                 ) : (
-                  <div className="creatives-grid">
-                    {folderCreatives.map(c => (
-                      <CreativeCard key={c.id} creative={c}
-                        onUpdate={(u) => updateCreative(activeFolder, u)}
-                        onDelete={() => deleteCreative(activeFolder, c.id)} />
-                    ))}
-                    <UploadCard onUpload={() => addCreative(activeFolder)} />
+                  <div>
+                    {uploadError && <div style={{padding: '8px 12px', marginBottom: 8, background: 'var(--danger-dim)', color: 'var(--danger)', borderRadius: 6, fontSize: 12}}>⚠ {uploadError}</div>}
+                    {uploading && <div style={{padding: '8px 12px', marginBottom: 8, color: 'var(--text-2)', fontSize: 12}}>⏳ Enviando arquivo...</div>}
+                    <div className="creatives-grid">
+                      {folderCreatives.map(c => (
+                        <CreativeCard key={c.id} creative={c}
+                          onUpdate={(u) => updateCreative(activeFolder, u)}
+                          onDelete={() => deleteCreative(activeFolder, c.id)} />
+                      ))}
+                      <UploadCard onUpload={() => addCreative(activeFolder)} onDrop={(file) => uploadAndCreate(activeFolder, file)} />
+                    </div>
                   </div>
                 )}
               </div>

@@ -86,14 +86,30 @@ const CreativeCard = ({ creative, onUpdate, onDelete }) => {
   );
 };
 
-const UploadCard = ({ onUpload }) => {
+const UploadCard = ({ onUpload, onDrop }) => {
   const [done, setDone] = React.useState(false);
+  const [dragover, setDragover] = React.useState(false);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragover(false);
+    const file = e.dataTransfer.files[0];
+    if (file && onDrop) { onDrop(file); setDone(true); setTimeout(() => setDone(false), 1200); }
+  };
+
+  const handleClick = () => { onUpload(); setDone(true); setTimeout(() => setDone(false), 1200); };
+
   if (done) {
     return <div className="upload-card" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="check" size={24} /><div>Adicionado!</div></div>;
   }
   return (
-    <button className="upload-card" onClick={() => { onUpload(); setDone(true); setTimeout(() => setDone(false), 1200); }}>
-      <Icon name="upload" size={22} /><div>Upload<br/>de criativo</div>
+    <button className="upload-card"
+      style={dragover ? { borderColor: 'var(--accent)', color: 'var(--accent)', background: 'var(--bg-1)' } : {}}
+      onClick={handleClick}
+      onDragOver={(e) => { e.preventDefault(); setDragover(true); }}
+      onDragLeave={() => setDragover(false)}
+      onDrop={handleDrop}>
+      <Icon name="upload" size={22} /><div>{dragover ? 'Solte aqui' : 'Upload ou arraste\ncriativo'}</div>
     </button>
   );
 };
