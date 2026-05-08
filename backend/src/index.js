@@ -45,7 +45,7 @@ const publicDir = path.join(__dirname, '..', 'public');
 
 app.get('/konbam', (_req, res) => res.sendFile(path.join(publicDir, 'Kanban Ads & Dropshipping.html')));
 
-const jsxOrder = ['icons.jsx','utils.jsx','users.jsx','api.jsx','login.jsx','social.jsx','data.jsx','card.jsx','creative.jsx','tabs.jsx','modal.jsx','views.jsx','app.jsx'];
+const jsxOrder = ['icons.jsx','utils.jsx','api.jsx','login.jsx','users.jsx','social.jsx','data.jsx','card.jsx','creative.jsx','tabs.jsx','modal.jsx','views.jsx','app.jsx'];
 
 app.get('/', (_req, res) => {
   try {
