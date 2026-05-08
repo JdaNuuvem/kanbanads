@@ -91,8 +91,8 @@ CREATE TABLE products (
 CREATE INDEX idx_products_stage          ON products(stage_id) WHERE archived_at IS NULL;
 CREATE INDEX idx_products_favorite       ON products(favorite) WHERE favorite = true;
 CREATE INDEX idx_products_entered_stage  ON products(stage_id, entered_stage_at);
-CREATE INDEX idx_products_name_trgm      ON products USING gin (name gin_trgm_ops);
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- CREATE INDEX idx_products_name_trgm      ON products USING gin (name gin_trgm_ops);
+-- (pg_trgm extension not available in postgres:18-alpine; requires contrib)
 
 -- M2M: produto ↔ labels
 CREATE TABLE product_labels (
