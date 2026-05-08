@@ -50,15 +50,15 @@ const jsxOrder = ['icons.jsx','utils.jsx','api.jsx','login.jsx','users.jsx','soc
 app.get('/', (_req, res) => {
   try {
     let html = fs.readFileSync(path.join(publicDir, 'Kanban Ads & Dropshipping.html'), 'utf-8');
-    let allJsx = '';
-    for (const file of jsxOrder) {
-      const content = fs.readFileSync(path.join(publicDir, file), 'utf-8');
-      allJsx += content + '\n';
-    }
     // Remove external JSX script tags
     html = html.replace(/<script type="text\/babel" src="[^"]+"><\/script>/g, '');
-    // Insert single inlined babel script with ALL JSX concatenated
-    html = html.replace('</body>', `<script type="text/babel">${allJsx}</script>\n</body>`);
+    // Build inline scripts in correct dependency order
+    let inlineScripts = '';
+    for (const file of jsxOrder) {
+      const content = fs.readFileSync(path.join(publicDir, file), 'utf-8');
+      inlineScripts += `\n<script type="text/babel">${content}</script>`;
+    }
+    html = html.replace('</body>', inlineScripts + '\n</body>');
     res.type('html').send(html);
   } catch (err) {
     logger.error(err, 'Failed to serve frontend');
