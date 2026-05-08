@@ -5,7 +5,7 @@ WORKDIR /app
 
 COPY backend/package.json backend/package-lock.json* ./
 
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # ---- Production stage ----
 FROM node:22-alpine
