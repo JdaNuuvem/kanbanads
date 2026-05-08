@@ -37,6 +37,7 @@ app.get('/metrics', metricsHandler);
 
 // Serve frontend static files
 const publicDir = path.join(__dirname, '..', 'public');
+app.get('/', (_req, res) => res.sendFile(path.join(publicDir, 'Kanban Ads & Dropshipping.html')));
 app.use(express.static(publicDir));
 
 // Request logging
