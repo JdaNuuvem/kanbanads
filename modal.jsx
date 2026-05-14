@@ -200,7 +200,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
     column: p.stage_id,
     color: p.color || 'oklch(0.72 0.12 240)',
     favorite: p.favorite,
-    startDate: p.start_date,
+    startDate: p.start_date ? new Date(p.start_date).toISOString().slice(0, 10) : null,
     supplier: p.supplier || '',
     labels: (p.labels || []).map((l) => l.id),
     assigneeIds: (p.assignees || []).map((a) => a.id),
