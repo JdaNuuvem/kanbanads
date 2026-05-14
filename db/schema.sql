@@ -71,6 +71,18 @@ CREATE TABLE workspace_members (
 
 CREATE INDEX idx_ws_members_user ON workspace_members(user_id);
 
+-- Workspace default para seed data
+INSERT INTO workspaces (id, name, description, color, created_by, is_default)
+VALUES ('00000000-0000-0000-0000-000000000001', 'Kanban Principal', 'Workspace padrão', 'oklch(0.72 0.12 240)', '11111111-1111-1111-1111-111111111111', true)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO workspace_members (workspace_id, user_id, role) VALUES
+  ('00000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'owner'),
+  ('00000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'admin'),
+  ('00000000-0000-0000-0000-000000000001', '33333333-3333-3333-3333-333333333333', 'member'),
+  ('00000000-0000-0000-0000-000000000001', '44444444-4444-4444-4444-444444444444', 'member')
+ON CONFLICT DO NOTHING;
+
 -- ============================================================================
 -- CATÁLOGOS (estágios e labels)
 -- ============================================================================

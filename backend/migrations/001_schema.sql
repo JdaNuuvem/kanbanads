@@ -71,6 +71,31 @@ CREATE TABLE workspace_members (
 
 CREATE INDEX idx_ws_members_user ON workspace_members(user_id);
 
+-- Cria workspace default para os seeds terem onde referenciar
+DO $$
+DECLARE
+  default_ws_id UUID;
+  admin_id UUID;
+BEGIN
+  SELECT id INTO admin_id FROM users WHERE id = '11111111-1111-1111-1111-111111111111';
+  IF NOT FOUND THEN
+    admin_id := '11111111-1111-1111-1111-111111111111';
+  END IF;
+
+  INSERT INTO workspaces (id, name, description, color, created_by, is_default)
+  VALUES ('00000000-0000-0000-0000-000000000001', 'Kanban Principal', 'Workspace padrão', 'oklch(0.72 0.12 240)', admin_id, true)
+  ON CONFLICT DO NOTHING
+  RETURNING id INTO default_ws_id;
+
+  -- Adiciona seed users como membros
+  INSERT INTO workspace_members (workspace_id, user_id, role) VALUES
+    (default_ws_id, '11111111-1111-1111-1111-111111111111', 'owner'),
+    (default_ws_id, '22222222-2222-2222-2222-222222222222', 'admin'),
+    (default_ws_id, '33333333-3333-3333-3333-333333333333', 'member'),
+    (default_ws_id, '44444444-4444-4444-4444-444444444444', 'member')
+  ON CONFLICT DO NOTHING;
+END $$;
+
 -- ============================================================================
 -- CATÁLOGOS (estágios e labels)
 -- ============================================================================
@@ -104,6 +129,7 @@ CREATE TABLE products (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name             TEXT NOT NULL,
   stage_id         TEXT NOT NULL REFERENCES stages(id),
+  workspace_id     UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   color            TEXT,
   favorite         BOOLEAN NOT NULL DEFAULT false,
   start_date       DATE,
@@ -120,6 +146,7 @@ CREATE TABLE products (
 CREATE INDEX idx_products_stage          ON products(stage_id) WHERE archived_at IS NULL;
 CREATE INDEX idx_products_favorite       ON products(favorite) WHERE favorite = true;
 CREATE INDEX idx_products_entered_stage  ON products(stage_id, entered_stage_at);
+CREATE INDEX idx_products_workspace      ON products(workspace_id, created_at DESC);
 CREATE INDEX idx_products_name_trgm      ON products USING gin (name gin_trgm_ops);
 
 -- M2M: produto ↔ labels

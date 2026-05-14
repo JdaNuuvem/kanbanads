@@ -67,10 +67,11 @@ ON CONFLICT (id) DO NOTHING;
 -- Produto exemplo: Mini Aspirador Portátil USB
 -- ----------------------------------------------------------------------------
 WITH p AS (
-  INSERT INTO products (id, name, stage_id, color, favorite, start_date, supplier, created_by, entered_stage_at)
+  INSERT INTO products (id, name, stage_id, workspace_id, color, favorite, start_date, supplier, created_by, entered_stage_at)
   VALUES (
     'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-    'Mini Aspirador Portátil USB', 'rodando', 'oklch(0.72 0.12 240)', true,
+    'Mini Aspirador Portátil USB', 'rodando', '00000000-0000-0000-0000-000000000001',
+    'oklch(0.72 0.12 240)', true,
     DATE '2026-04-22', 'https://aliexpress.com/item/100482839',
     '11111111-1111-1111-1111-111111111111',
     now() - interval '3 days'
