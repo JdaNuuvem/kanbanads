@@ -15,6 +15,8 @@ const App = () => {
   // ---- Data ----
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [currentWorkspace, setCurrentWorkspace] = useState(null);
   const [activity, setActivity] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +26,12 @@ const App = () => {
   const [view, setView] = useState('kanban');
   const [compact, setCompact] = useState(false);
   const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput), 200);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
   const [favOnly, setFavOnly] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const [labelFilter, setLabelFilter] = useState([]);
@@ -35,6 +43,8 @@ const App = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   const [showManageTeam, setShowManageTeam] = useState(false);
+  const [showCreateWs, setShowCreateWs] = useState(false);
+  const [showManageWs, setShowManageWs] = useState(false);
   const [checklistPopupId, setChecklistPopupId] = useState(null);
 
   // ---- Auto-login check ----
@@ -61,17 +71,40 @@ const App = () => {
       setLoading(true);
       setError(null);
       try {
-        const [productsData, usersData, activityData, notifsData] = await Promise.all([
-          apiProducts.list({ limit: 500 }),
+        const [workspacesData, usersData] = await Promise.all([
+          apiWorkspaces.list(),
           apiUsers.list(),
-          apiActivity.list({ limit: 50 }),
-          apiNotifications.list({ limit: 100 }),
         ]);
 
-        setProducts(productsData.products || []);
         setUsers(usersData.users || []);
-        setActivity(activityData.activity || []);
-        setNotifications(notifsData.notifications || []);
+        const wsList = workspacesData.workspaces || [];
+        setWorkspaces(wsList);
+
+        // Set current workspace: prefer last selected from localStorage, else default, else first
+        const storedWsId = (() => { try { return localStorage.getItem('kanban_current_ws'); } catch { return null; } })();
+        let activeWs = null;
+        if (storedWsId) {
+          activeWs = wsList.find((w) => w.id === storedWsId);
+        }
+        if (!activeWs) {
+          activeWs = wsList.find((w) => w.is_default) || wsList[0];
+        }
+        if (activeWs) {
+          setCurrentWorkspace(activeWs);
+          localStorage.setItem('kanban_current_ws', activeWs.id);
+        }
+
+        // Load products and activity for the active workspace
+        if (activeWs) {
+          const [productsData, activityData, notifsData] = await Promise.all([
+            apiProducts.list({ workspace_id: activeWs.id, limit: 500 }),
+            apiActivity.list({ workspace_id: activeWs.id, limit: 50 }),
+            apiNotifications.list({ limit: 100 }),
+          ]);
+          setProducts(productsData.products || []);
+          setActivity(activityData.activity || []);
+          setNotifications(notifsData.notifications || []);
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -86,23 +119,39 @@ const App = () => {
   useEffect(() => {
     if (!currentUser) return;
 
-    const onNotification = (data) => {
-      setNotifications((prev) => [{ id: data.activity_id, ...data, read: false, created_at: new Date().toISOString() }, ...prev]);
+    const onNotification = () => {
+      apiNotifications.list({ limit: 100 }).then((d) => setNotifications(d.notifications || [])).catch(() => {});
     };
 
-    const onActivity = () => {
-      apiActivity.list({ limit: 50 }).then((d) => setActivity(d.activity || [])).catch(() => {});
+    const onActivity = (data) => {
+      if (currentWorkspace && data?.workspace_id && data.workspace_id !== currentWorkspace.id) return;
+      const wsId = currentWorkspace?.id;
+      apiActivity.list({ workspace_id: wsId, limit: 50 }).then((d) => setActivity(d.activity || [])).catch(() => {});
     };
 
     const onProductUpdated = (data) => {
+      if (!data.product_id) return;
       apiProducts.get(data.product_id).then((d) => {
-        setProducts((prev) => prev.map((p) => p.id === d.product.id ? mapProduct(d.product) : p));
+        if (!d?.product) return;
+        setProducts((prev) => {
+          const idx = prev.findIndex((p) => p.id === d.product.id);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          next[idx] = mapProduct(d.product);
+          return next;
+        });
       }).catch(() => {});
     };
 
     const onProductCreated = (data) => {
+      if (currentWorkspace && data?.workspace_id && data.workspace_id !== currentWorkspace.id) return;
+      if (!data.product_id) return;
       apiProducts.get(data.product_id).then((d) => {
-        setProducts((prev) => [...prev, mapProduct(d.product)]);
+        if (!d?.product) return;
+        setProducts((prev) => {
+          if (prev.some((p) => p.id === d.product.id)) return prev;
+          return [...prev, mapProduct(d.product)];
+        });
       }).catch(() => {});
     };
 
@@ -123,13 +172,14 @@ const App = () => {
       sseClient.off('product.created', onProductCreated);
       sseClient.off('product.deleted', onProductDeleted);
     };
-  }, [currentUser]);
+  }, [currentUser, currentWorkspace]);
 
   // ---- Map API product to frontend format ----
   const mapProduct = (p) => ({
     id: p.id,
     name: p.name,
     column: p.stage_id,
+    workspaceId: p.workspace_id,
     color: p.color || 'oklch(0.72 0.12 240)',
     favorite: p.favorite,
     startDate: p.start_date,
@@ -137,6 +187,9 @@ const App = () => {
     labels: (p.labels || []).map((l) => l.id),
     assigneeIds: (p.assignees || []).map((a) => a.id),
     createdById: p.created_by,
+    reserved_by: p.reserved_by,
+    reserved_by_name: p.reserved_by_name,
+    reserved_at: p.reserved_at,
     creatives: p.creatives || {},
     comments: (p.comments || []).map((c) => ({
       id: c.id,
@@ -208,14 +261,16 @@ const App = () => {
 
     try {
       await apiProducts.moveStage(id, toColumn);
-      // Refresh activity
-      apiActivity.list({ limit: 50 }).then((d) => setActivity(d.activity || [])).catch(() => {});
+      if (currentWorkspace) {
+        apiActivity.list({ workspace_id: currentWorkspace.id, limit: 50 }).then((d) => setActivity(d.activity || [])).catch(() => {});
+      }
     } catch (err) {
       setError(err.message);
-      // Revert
-      apiProducts.list({ limit: 500 }).then((d) => setProducts(d.products.map(mapProduct))).catch(() => {});
+      if (currentWorkspace) {
+        apiProducts.list({ workspace_id: currentWorkspace.id, limit: 500 }).then((d) => setProducts(d.products.map(mapProduct))).catch(() => {});
+      }
     }
-  }, [products, currentUser]);
+  }, [products, currentUser, currentWorkspace]);
 
   const handleDragStart = (e, product) => {
     setDraggingId(product.id);
@@ -232,10 +287,12 @@ const App = () => {
   };
 
   const handleCreate = async ({ name, column, supplier, startDate, labels, color, assigneeIds }) => {
+    if (!currentWorkspace) return;
     try {
       const data = await apiProducts.create({
         name,
         stage_id: column,
+        workspace_id: currentWorkspace.id,
         color: color || 'oklch(0.72 0.12 240)',
         start_date: startDate || undefined,
         supplier: supplier || undefined,
@@ -244,7 +301,7 @@ const App = () => {
       });
 
       setProducts((prev) => [...prev, mapProduct(data.product)]);
-      apiActivity.list({ limit: 50 }).then((d) => setActivity(d.activity || [])).catch(() => {});
+      apiActivity.list({ workspace_id: currentWorkspace.id, limit: 50 }).then((d) => setActivity(d.activity || [])).catch(() => {});
       setShowAdd(false);
     } catch (err) {
       setError(err.message);
@@ -264,13 +321,28 @@ const App = () => {
   const toggleFavorite = async (id) => {
     const product = products.find((pp) => pp.id === id);
     if (!product) return;
-    // Optimistic
     setProducts((prev) => prev.map((pp) => pp.id === id ? { ...pp, favorite: !pp.favorite } : pp));
     try {
       await apiProducts.update(id, { favorite: !product.favorite });
     } catch (err) {
       setError(err.message);
       setProducts((prev) => prev.map((pp) => pp.id === id ? { ...pp, favorite: product.favorite } : pp));
+    }
+  };
+
+  const toggleReserve = async (id) => {
+    const product = products.find((pp) => pp.id === id);
+    if (!product) return;
+    try {
+      if (product.reserved_by) {
+        await apiProducts.release(id);
+        setProducts((prev) => prev.map((pp) => pp.id === id ? { ...pp, reserved_by: null, reserved_by_name: null, reserved_at: null } : pp));
+      } else {
+        await apiProducts.reserve(id);
+        setProducts((prev) => prev.map((pp) => pp.id === id ? { ...pp, reserved_by: currentUser.id, reserved_by_name: currentUser.name, reserved_at: new Date().toISOString() } : pp));
+      }
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -287,7 +359,9 @@ const App = () => {
   const updateProductWithActivity = async (next) => {
     setProducts((list) => list.map((p) => p.id === next.id ? next : p));
     // In API mode, the activity is created server-side. Just refresh.
-    apiActivity.list({ limit: 50 }).then((d) => setActivity(d.activity || [])).catch(() => {});
+    if (currentWorkspace) {
+      apiActivity.list({ workspace_id: currentWorkspace.id, limit: 50 }).then((d) => setActivity(d.activity || [])).catch(() => {});
+    }
   };
 
   const productsByColumn = (colId) => filtered.filter((p) => p.column === colId);
@@ -316,8 +390,10 @@ const App = () => {
         if (json.products && Array.isArray(json.products)) {
           if (confirm(`Importar ${json.products.length} produtos?`)) {
             await apiExportImport.import(json);
-            const data = await apiProducts.list({ limit: 500 });
-            setProducts(data.products.map(mapProduct));
+            if (currentWorkspace) {
+              const data = await apiProducts.list({ workspace_id: currentWorkspace.id, limit: 500 });
+              setProducts(data.products.map(mapProduct));
+            }
           }
         }
       } catch (err) {
@@ -341,9 +417,63 @@ const App = () => {
   const handleLogout = () => {
     apiAuth.logout();
     setCurrentUser(null);
+    setCurrentWorkspace(null);
     setProducts([]);
     setActivity([]);
     setNotifications([]);
+  };
+
+  const handleSwitchWorkspace = async (ws) => {
+    if (!ws || ws.id === currentWorkspace?.id) return;
+
+    setCurrentWorkspace(ws);
+    localStorage.setItem('kanban_current_ws', ws.id);
+    setLoading(true);
+    try {
+      const [productsData, activityData] = await Promise.all([
+        apiProducts.list({ workspace_id: ws.id, limit: 500 }),
+        apiActivity.list({ workspace_id: ws.id, limit: 50 }),
+      ]);
+      setProducts(productsData.products || []);
+      setActivity(activityData.activity || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateWorkspace = (newWs) => {
+    setWorkspaces((prev) => [...prev, { ...newWs, product_count: 0, my_role: 'owner', members: [] }]);
+    handleSwitchWorkspace(newWs);
+  };
+
+  const handleWorkspaceUpdated = async (updated) => {
+    if (updated === '__deleted__') {
+      // Workspace was deleted, switch to another
+      const remaining = workspaces.filter((w) => w.id !== currentWorkspace?.id);
+      setWorkspaces(remaining);
+      if (remaining.length > 0) {
+        handleSwitchWorkspace(remaining.find((w) => w.is_default) || remaining[0]);
+      }
+      setShowManageWs(false);
+      return;
+    }
+    if (updated === null) {
+      // User left the workspace
+      const remaining = workspaces.filter((w) => w.id !== currentWorkspace?.id);
+      setWorkspaces(remaining);
+      if (remaining.length > 0) {
+        handleSwitchWorkspace(remaining[0]);
+      }
+      setShowManageWs(false);
+      return;
+    }
+    // Update workspace in list
+    setWorkspaces((prev) => prev.map((w) => w.id === updated.id ? { ...w, ...updated } : w));
+    if (currentWorkspace?.id === updated.id) {
+      setCurrentWorkspace((prev) => ({ ...prev, ...updated }));
+    }
   };
 
   const handleLogin = (user) => {
@@ -388,6 +518,14 @@ const App = () => {
           <span className="brand-sub">/ Ads & Dropshipping</span>
         </div>
 
+        <WorkspaceSwitcher
+          workspaces={workspaces}
+          currentWorkspace={currentWorkspace}
+          onSwitch={handleSwitchWorkspace}
+          onCreate={() => setShowCreateWs(true)}
+          onManage={() => setShowManageWs(true)}
+        />
+
         <div className="view-tabs">
           <button className={`view-tab ${view === 'kanban' ? 'active' : ''}`} onClick={() => setView('kanban')} title="K"><Icon name="layers" size={13} /> Kanban</button>
           <button className={`view-tab ${view === 'table' ? 'active' : ''}`} onClick={() => setView('table')} title="T"><Icon name="filter" size={13} /> Tabela</button>
@@ -396,7 +534,7 @@ const App = () => {
 
         <div className="search">
           <span className="search-icon"><Icon name="search" size={14} /></span>
-          <input placeholder="Buscar… ( / )" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input placeholder="Buscar… ( / )" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
         </div>
 
         <div className="topbar-actions">
@@ -446,6 +584,7 @@ const App = () => {
             onSwitch={(id) => setCurrentUser(users.find((u) => u.id === id))}
             onLogout={handleLogout}
             onManage={() => setShowManageTeam(true)}
+            onManageWs={() => setShowManageWs(true)}
           />
         </div>
       </div>
@@ -511,8 +650,7 @@ const App = () => {
                   )}
                   {items.map((p) => (
                     <ProductCard key={p.id} product={p} compact={compact} users={users}
-                      onOpen={setOpenProductId} onToggleFav={toggleFavorite}
-                      onOpenChecklist={setChecklistPopupId}
+                      onOpen={setOpenProductId} onToggleFav={toggleFavorite} onToggleReserve={toggleReserve}
                       onDragStart={handleDragStart} onDragEnd={handleDragEnd}
                       isDragging={draggingId === p.id} />
                   ))}
@@ -552,6 +690,23 @@ const App = () => {
           currentUserId={currentUser.id}
           onClose={() => setShowManageTeam(false)}
           onUpdate={(next) => setUsers(next)}
+        />
+      )}
+
+      {showCreateWs && (
+        <CreateWorkspaceModal
+          onClose={() => setShowCreateWs(false)}
+          onCreate={handleCreateWorkspace}
+        />
+      )}
+
+      {showManageWs && currentWorkspace && (
+        <ManageWorkspaceModal
+          workspace={currentWorkspace}
+          users={users}
+          currentUserId={currentUser.id}
+          onClose={() => setShowManageWs(false)}
+          onUpdate={handleWorkspaceUpdated}
         />
       )}
 

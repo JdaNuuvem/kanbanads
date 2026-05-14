@@ -1,4 +1,5 @@
 // Product modal — shell with tabs (Pastas / Métricas / Checklist) + sidebar + aside
+// ALL mutations go through the API now
 const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onDelete, onDuplicate }) => {
   const [activeTab, setActiveTab] = React.useState('pastas');
   const [activeFolder, setActiveFolder] = React.useState('CA1');
@@ -7,6 +8,10 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
   const [commentText, setCommentText] = React.useState('');
   const [editingLabels, setEditingLabels] = React.useState(false);
   const [showMenu, setShowMenu] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState(null);
+
+  const showError = (msg) => { setError(msg); setTimeout(() => setError(null), 5000); };
 
   React.useEffect(() => {
     const prev = document.body.style.overflow;
@@ -21,90 +26,71 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
     return () => { document.body.style.overflow = prev; document.removeEventListener('keydown', handler); };
   }, [onClose]);
 
-  const updateField = (field, value) => onUpdate({ ...product, [field]: value });
+  // Update basic fields via API
+  const updateField = async (field, value) => {
+    const next = { ...product, [field]: value };
+    onUpdate(next); // Optimistic UI
+    try {
+      const body = { [field]: value };
+      await apiProducts.update(product.id, body);
+    } catch (err) {
+      showError(err.message);
+      onUpdate(product); // Revert
+    }
+  };
 
-  const moveColumn = (toCol) => {
+  // Move stage via API
+  const moveColumn = async (toCol) => {
     if (toCol === product.column) return;
-    const colTitle = COLUMNS.find(c => c.id === toCol)?.title;
-    onUpdate({
+    const colTitle = COLUMNS.find((c) => c.id === toCol)?.title || toCol;
+    const next = {
       ...product,
       column: toCol,
       enteredColumnAt: new Date().toISOString(),
-      history: [{ id: 'h' + Date.now(), text: `Movido para ${colTitle}`, at: new Date().toISOString(), type: 'move', byId: currentUser?.id }, ...product.history],
-    });
-  };
-
-  const setAssigneeIds = (ids) => {
-    const prev = product.assigneeIds || [];
-    const added = ids.filter(x => !prev.includes(x));
-    const removed = prev.filter(x => !ids.includes(x));
-    let text;
-    if (added.length && !removed.length) {
-      const names = added.map(id => users.find(u => u.id === id)?.name).filter(Boolean).join(', ');
-      text = `Adicionado(s) responsável(eis): ${names}`;
-    } else if (removed.length && !added.length) {
-      const names = removed.map(id => users.find(u => u.id === id)?.name).filter(Boolean).join(', ');
-      text = `Removido(s) responsável(eis): ${names}`;
-    } else {
-      text = 'Responsáveis atualizados';
-    }
-    onUpdate({
-      ...product,
-      assigneeIds: ids,
-      history: [{ id: 'h' + Date.now(), text, at: new Date().toISOString(), type: 'assign', byId: currentUser?.id }, ...product.history],
-    });
-  };
-
-  const colIdx = COLUMNS.findIndex(c => c.id === product.column);
-  const goPrev = () => colIdx > 0 && moveColumn(COLUMNS[colIdx - 1].id);
-  const goNext = () => colIdx < COLUMNS.length - 1 && moveColumn(COLUMNS[colIdx + 1].id);
-
-  const [uploading, setUploading] = React.useState(false);
-  const [uploadError, setUploadError] = React.useState(null);
-  const fileInputRef = React.useRef(null);
-
-  const formatSize = (bytes) => {
-    if (!bytes) return '0 B';
-    const units = ['B','KB','MB','GB'];
-    let i = 0;
-    let size = bytes;
-    while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
-    return `${size.toFixed(1)} ${units[i]}`;
-  };
-
-  const detectType = (file) => {
-    if (!file) return 'image';
-    if (file.type.startsWith('video/')) return 'video';
-    if (file.type.startsWith('image/')) return 'image';
-    const ext = (file.name || '').split('.').pop().toLowerCase();
-    if (['mp4','mov','webm','avi'].includes(ext)) return 'video';
-    if (['jpg','jpeg','png','gif','webp','bmp'].includes(ext)) return 'image';
-    if (['zip','rar'].includes(ext)) return 'image'; // zip tratado como pacote de imagem
-    return 'image';
-  };
-
-  const uploadFile = async (file) => {
-    setUploading(true);
+    };
+    onUpdate(next);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/uploads', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Falha no upload');
-      }
-      const data = await res.json();
-      return data;
-    } finally {
-      setUploading(false);
+      await apiProducts.moveStage(product.id, toCol);
+    } catch (err) {
+      showError(err.message);
+      onUpdate(product);
     }
   };
 
-  const addCreative = (folder) => {
+  // Set assignees via API
+  const setAssigneeIds = async (ids) => {
+    const next = { ...product, assigneeIds: ids };
+    onUpdate(next);
+    try {
+      await apiProducts.setAssignees(product.id, ids);
+    } catch (err) {
+      showError(err.message);
+      onUpdate(product);
+    }
+  };
+
+  // Save labels via API when closing label picker
+  const saveLabels = async (labelIds) => {
+    const next = { ...product, labels: labelIds };
+    onUpdate(next);
+    setEditingLabels(false);
+    try {
+      await apiProducts.setLabels(product.id, labelIds);
+    } catch (err) {
+      showError(err.message);
+      onUpdate(product);
+    }
+  };
+
+  const toggleLabel = (id) => {
+    const next = product.labels.includes(id)
+      ? product.labels.filter((x) => x !== id)
+      : [...product.labels, id];
+    onUpdate({ ...product, labels: next });
+  };
+
+  // Upload + create creative via API
+  const addCreative = () => {
     const picker = document.createElement('input');
     picker.type = 'file';
     picker.accept = 'video/mp4,video/webm,video/quicktime,image/jpeg,image/png,image/gif,image/webp,.zip';
@@ -112,103 +98,175 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
     picker.onchange = async () => {
       const file = picker.files[0];
       if (!file) return;
+      setSaving(true);
       try {
-        const uploaded = await uploadFile(file);
-        const type = detectType(file);
-        const newC = {
-          id: `${folder}-${Date.now()}`,
+        // Upload file
+        const formData = new FormData();
+        formData.append('file', file);
+        const uploadRes = await apiFetch('/uploads', {
+          method: 'POST',
+          headers: { Authorization: authHeader(getToken()) },
+          body: formData,
+        });
+        const uploaded = await uploadRes.json();
+
+        // Create creative in API
+        const type = file.type.startsWith('video/') ? 'video' : file.type.startsWith('image/') ? 'image' : 'image';
+        const data = await apiCreatives.create(product.id, {
+          folder: activeFolder,
           name: file.name,
           type,
           version: 1,
           status: 'rascunho',
           size: formatSize(file.size),
-          text: null,
           link: uploaded.url,
           tags: [],
-          metrics: { ctr: '0.00', cpm: '0.00', spent: '0.00' },
-          addedAt: new Date().toISOString(),
-        };
-        onUpdate({ ...product, creatives: { ...product.creatives, [folder]: [...(product.creatives[folder] || []), newC] } });
+        });
+
+        // Get the full creative data back
+        const fullProduct = await apiProducts.get(product.id);
+        onUpdate(mapProductLocally(fullProduct.product));
       } catch (err) {
-        setUploadError(err.message || 'Erro no upload');
-        setTimeout(() => setUploadError(null), 4000);
+        showError(err.message || 'Erro no upload');
+      } finally {
+        setSaving(false);
       }
     };
     picker.click();
   };
 
-  const uploadAndCreate = async (folder, file) => {
+  // Update creative via API
+  const updateCreative = async (folder, updated) => {
+    // Optimistic
+    const nextCreatives = { ...product.creatives };
+    nextCreatives[folder] = (nextCreatives[folder] || []).map((c) => c.id === updated.id ? updated : c);
+    onUpdate({ ...product, creatives: nextCreatives });
     try {
-      const uploaded = await uploadFile(file);
-      const type = detectType(file);
-      const newC = {
-        id: `${folder}-${Date.now()}`,
-        name: file.name,
-        type,
-        version: 1,
-        status: 'rascunho',
-        size: formatSize(file.size),
-        text: null,
-        link: uploaded.url,
-        tags: [],
-        metrics: { ctr: '0.00', cpm: '0.00', spent: '0.00' },
-        addedAt: new Date().toISOString(),
-      };
-      onUpdate({ ...product, creatives: { ...product.creatives, [folder]: [...(product.creatives[folder] || []), newC] } });
+      await apiCreatives.update(updated.id, {
+        name: updated.name,
+        status: updated.status,
+        link: updated.link,
+        tags: updated.tags,
+        body_text: updated.body_text,
+      });
     } catch (err) {
-      setUploadError(err.message || 'Erro no upload');
-      setTimeout(() => setUploadError(null), 4000);
+      showError(err.message);
     }
   };
 
-  const updateCreative = (folder, updated) => {
-    onUpdate({ ...product, creatives: { ...product.creatives, [folder]: product.creatives[folder].map(c => c.id === updated.id ? updated : c) } });
+  // Delete creative via API
+  const deleteCreative = async (folder, id) => {
+    const nextCreatives = { ...product.creatives };
+    nextCreatives[folder] = (nextCreatives[folder] || []).filter((c) => c.id !== id);
+    onUpdate({ ...product, creatives: nextCreatives });
+    try {
+      await apiCreatives.remove(id);
+    } catch (err) {
+      showError(err.message);
+    }
   };
 
-  const deleteCreative = (folder, id) => {
-    onUpdate({ ...product, creatives: { ...product.creatives, [folder]: product.creatives[folder].filter(c => c.id !== id) } });
+  // Duplicate creative via API
+  const duplicateCreative = async (folder, c) => {
+    try {
+      await apiCreatives.duplicate(c.id);
+      const fullProduct = await apiProducts.get(product.id);
+      onUpdate(mapProductLocally(fullProduct.product));
+    } catch (err) {
+      showError(err.message);
+    }
   };
 
-  const duplicateCreative = (folder, c) => {
-    const newC = { ...c, id: `${folder}-${Date.now()}`, version: c.version + 1, name: c.name.replace(/V\d+$/, '') + ` V${c.version+1}`, addedAt: new Date().toISOString(), status: 'rascunho' };
-    onUpdate({ ...product, creatives: { ...product.creatives, [folder]: [...product.creatives[folder], newC] } });
-  };
-
-  const addComment = () => {
+  // Add comment via API
+  const addComment = async () => {
     if (!commentText.trim()) return;
-    const mentions = parseMentionsFromText(commentText, users);
-    onUpdate({ ...product, comments: [{ id: 'c' + Date.now(), authorId: currentUser?.id, text: commentText.trim(), mentions, at: new Date().toISOString() }, ...product.comments] });
-    setCommentText('');
+    setSaving(true);
+    try {
+      await apiComments.create(product.id, commentText.trim());
+      const fullProduct = await apiProducts.get(product.id);
+      onUpdate(mapProductLocally(fullProduct.product));
+      setCommentText('');
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const toggleLabel = (id) => {
-    updateField('labels', product.labels.includes(id) ? product.labels.filter(x => x !== id) : [...product.labels, id]);
+  // Map API product to local format (shared with app.jsx)
+  const mapProductLocally = (p) => ({
+    id: p.id,
+    name: p.name,
+    column: p.stage_id,
+    color: p.color || 'oklch(0.72 0.12 240)',
+    favorite: p.favorite,
+    startDate: p.start_date,
+    supplier: p.supplier || '',
+    labels: (p.labels || []).map((l) => l.id),
+    assigneeIds: (p.assignees || []).map((a) => a.id),
+    createdById: p.created_by,
+    creatives: (p.creatives || []).reduce((acc, c) => {
+      if (!acc[c.folder]) acc[c.folder] = [];
+      acc[c.folder].push({
+        id: c.id, name: c.name, type: c.type, version: c.version,
+        status: c.status, size: c.size, body_text: c.body_text,
+        link: c.link, tags: c.tags || [],
+        metrics: { ctr: String(c.ctr || '0.00'), cpm: String(c.cpm || '0.00'), spent: String(c.spent || '0.00') },
+        addedAt: c.added_at,
+      });
+      return acc;
+    }, {}),
+    comments: (p.comments || []).map((c) => ({
+      id: c.id, authorId: c.author_id, text: c.body,
+      mentions: (c.mentions || []).map((m) => m.user_id), at: c.created_at,
+    })),
+    metrics: p.metrics || [],
+    checklist: p.checklist || {},
+    history: (p.history || []).map((h) => ({ id: h.id, text: h.text, at: h.at, type: h.type, byId: h.by_id })),
+    enteredColumnAt: p.entered_stage_at,
+  });
+
+  const formatSize = (bytes) => {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let i = 0;
+    let size = bytes;
+    while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+    return `${size.toFixed(1)} ${units[i]}`;
   };
+
+  const colIdx = COLUMNS.findIndex((c) => c.id === product.column);
+  const goPrev = () => colIdx > 0 && moveColumn(COLUMNS[colIdx - 1].id);
+  const goNext = () => colIdx < COLUMNS.length - 1 && moveColumn(COLUMNS[colIdx + 1].id);
 
   const folderCreatives = product.creatives[activeFolder] || [];
-  const currentLabels = product.labels.map(id => LABEL_OPTIONS.find(l => l.id === id)).filter(Boolean);
+  const currentLabels = product.labels.map((id) => LABEL_OPTIONS.find((l) => l.id === id)).filter(Boolean);
   const daysInStage = daysSince(product.enteredColumnAt);
   const checklistItems = STAGE_CHECKLISTS[product.column] || [];
-  const checklistDone = checklistItems.filter(i => product.checklist?.[i.id]).length;
-
-  const filteredHistory = product.history.filter(h => historyFilter === 'all' || h.type === historyFilter);
+  const checklistDone = checklistItems.filter((i) => product.checklist?.[i.id]).length;
+  const filteredHistory = product.history.filter((h) => historyFilter === 'all' || h.type === historyFilter);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        {error && (
+          <div className="toast toast-error" style={{ margin: '8px 20px 0' }}>
+            <Icon name="warning" size={14} /> {error}
+          </div>
+        )}
         <div className="modal-header">
           <div className="card-avatar" style={{ background: product.color || 'var(--text-3)', width: 28, height: 28, fontSize: 12 }}>{product.name.charAt(0).toUpperCase()}</div>
           <button className={`card-fav ${product.favorite ? 'active' : ''}`} onClick={() => updateField('favorite', !product.favorite)} style={{ width: 28, height: 28 }}>
             <Icon name={product.favorite ? 'starFill' : 'star'} size={18} />
           </button>
-          <input className="modal-title-input" value={product.name} onChange={e => updateField('name', e.target.value)} />
-          <span className="card-time-badge" title={`${daysInStage} dias em ${COLUMNS.find(c => c.id === product.column)?.title}`}>
-            {daysInStage}d em {COLUMNS.find(c => c.id === product.column)?.title}
+          <input className="modal-title-input" value={product.name} onChange={(e) => onUpdate({ ...product, name: e.target.value })} onBlur={(e) => updateField('name', e.target.value)} />
+          <span className="card-time-badge" title={`${daysInStage} dias em ${COLUMNS.find((c) => c.id === product.column)?.title}`}>
+            {daysInStage}d em {COLUMNS.find((c) => c.id === product.column)?.title}
           </span>
           <button className="btn btn-sm btn-ghost btn-icon" onClick={goPrev} disabled={colIdx === 0} title="Estágio anterior"><Icon name="arrowLeft" size={14} /></button>
-          <button className="btn btn-sm btn-ghost btn-icon" onClick={goNext} disabled={colIdx === COLUMNS.length-1} title="Próximo estágio"><Icon name="arrowRight" size={14} /></button>
+          <button className="btn btn-sm btn-ghost btn-icon" onClick={goNext} disabled={colIdx === COLUMNS.length - 1} title="Próximo estágio"><Icon name="arrowRight" size={14} /></button>
           <div className="card-labels">
-            {currentLabels.map(l => (
+            {currentLabels.map((l) => (
               <span key={l.id} className="label" style={{ background: `color-mix(in oklch, ${l.color} 20%, transparent)`, color: l.color }}>{l.name}</span>
             ))}
             <button className="btn btn-sm btn-ghost" onClick={() => setEditingLabels(!editingLabels)}><Icon name="plus" size={12} /> Label</button>
@@ -217,7 +275,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
             <button className="btn btn-ghost btn-icon" onClick={() => setShowMenu(!showMenu)}><Icon name="moreH" size={16} /></button>
             {showMenu && (
               <div className="popover" style={{ right: 0, top: 38 }} onMouseLeave={() => setShowMenu(false)}>
-                {COLUMNS.map(c => (
+                {COLUMNS.map((c) => (
                   <div key={c.id} className="popover-item" onClick={() => { moveColumn(c.id); setShowMenu(false); }}>
                     <span className="col-dot" style={{ background: c.color }} />Mover para {c.title}
                     {product.column === c.id && <Icon name="check" size={14} style={{ marginLeft: 'auto' }} />}
@@ -239,7 +297,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
         {editingLabels && (
           <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-2)' }}>
             <div className="labels-picker">
-              {LABEL_OPTIONS.map(l => {
+              {LABEL_OPTIONS.map((l) => {
                 const active = product.labels.includes(l.id);
                 return (
                   <button key={l.id} className={`label-chip ${active ? 'active' : ''}`}
@@ -248,21 +306,17 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                 );
               })}
             </div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+              <button className="btn btn-sm" onClick={() => { onUpdate({ ...product, labels: product.labels }); setEditingLabels(false); }}>Cancelar</button>
+              <button className="btn btn-sm btn-primary" onClick={() => saveLabels(product.labels)}>Salvar labels</button>
+            </div>
           </div>
         )}
 
         <div className="modal-tabs">
-          <button className={`modal-tab ${activeTab==='pastas'?'active':''}`} onClick={() => setActiveTab('pastas')}>
-            <Icon name="folder" size={14} /> Pastas
-          </button>
-          <button className={`modal-tab ${activeTab==='metricas'?'active':''}`} onClick={() => setActiveTab('metricas')}>
-            <Icon name="target" size={14} /> Métricas
-            {product.metrics.length > 0 && <span className="badge">{product.metrics.length}</span>}
-          </button>
-          <button className={`modal-tab ${activeTab==='checklist'?'active':''}`} onClick={() => setActiveTab('checklist')}>
-            <Icon name="check" size={14} /> Checklist
-            {checklistItems.length > 0 && <span className="badge">{checklistDone}/{checklistItems.length}</span>}
-          </button>
+          <button className={`modal-tab ${activeTab === 'pastas' ? 'active' : ''}`} onClick={() => setActiveTab('pastas')}><Icon name="folder" size={14} /> Pastas</button>
+          <button className={`modal-tab ${activeTab === 'metricas' ? 'active' : ''}`} onClick={() => setActiveTab('metricas')}><Icon name="target" size={14} /> Métricas</button>
+          <button className={`modal-tab ${activeTab === 'checklist' ? 'active' : ''}`} onClick={() => setActiveTab('checklist')}><Icon name="check" size={14} /> Checklist</button>
         </div>
 
         <div className="modal-body">
@@ -271,7 +325,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
               <div className="sidebar-section">
                 <div className="sidebar-section-title">Pastas</div>
                 <div className="folder-list">
-                  {FOLDERS.map(f => {
+                  {FOLDERS.map((f) => {
                     const count = product.creatives[f]?.length || 0;
                     return (
                       <div key={f} className={`folder-item ${activeFolder === f ? 'active' : ''}`} onClick={() => setActiveFolder(f)}>
@@ -290,17 +344,17 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                 </div>
                 <div className="meta-field">
                   <div className="meta-label">Início</div>
-                  <input className="meta-input" type="date" value={product.startDate} onChange={e => updateField('startDate', e.target.value)} />
+                  <input className="meta-input" type="date" value={product.startDate || ''} onChange={(e) => updateField('startDate', e.target.value)} />
                 </div>
                 <div className="meta-field">
                   <div className="meta-label">Fornecedor</div>
-                  <input className="meta-input" type="url" placeholder="https://..." value={product.supplier} onChange={e => updateField('supplier', e.target.value)} />
+                  <input className="meta-input" type="url" placeholder="https://..." value={product.supplier || ''} onChange={(e) => onUpdate({ ...product, supplier: e.target.value })} onBlur={(e) => updateField('supplier', e.target.value)} />
                   {product.supplier && <a className="meta-link" href={product.supplier} target="_blank" rel="noreferrer">Abrir →</a>}
                 </div>
                 <div className="meta-field">
                   <div className="meta-label">Cor</div>
                   <div className="color-picker">
-                    {['oklch(0.72 0.12 240)','oklch(0.72 0.14 340)','oklch(0.78 0.14 80)','oklch(0.72 0.14 160)','oklch(0.72 0.14 30)','oklch(0.72 0.14 300)','oklch(0.82 0.16 90)','oklch(0.78 0.16 135)'].map(c => (
+                    {['oklch(0.72 0.12 240)', 'oklch(0.72 0.14 340)', 'oklch(0.78 0.14 80)', 'oklch(0.72 0.14 160)', 'oklch(0.72 0.14 30)', 'oklch(0.72 0.14 300)', 'oklch(0.82 0.16 90)', 'oklch(0.78 0.16 135)'].map((c) => (
                       <div key={c} className={`color-swatch ${product.color === c ? 'active' : ''}`} style={{ background: c, width: 20, height: 20 }} onClick={() => updateField('color', c)}>
                         {product.color === c && <Icon name="check" size={10} />}
                       </div>
@@ -311,7 +365,6 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
             </div>
           )}
 
-          {/* Main content */}
           {activeTab === 'pastas' ? (
             <div className="modal-main">
               <div className="modal-toolbar">
@@ -319,8 +372,8 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                   <Icon name="folderFill" size={16} /> {activeFolder}
                   <span style={{ color: 'var(--text-3)', fontWeight: 400, marginLeft: 4 }}>· {folderCreatives.length} criativos</span>
                 </div>
-                <button className="btn btn-sm btn-primary" style={{ marginLeft: 'auto' }} onClick={() => addCreative(activeFolder)}>
-                  <Icon name="plus" size={12} /> Adicionar
+                <button className="btn btn-sm btn-primary" style={{ marginLeft: 'auto' }} onClick={addCreative} disabled={saving}>
+                  <Icon name="plus" size={12} /> {saving ? 'Enviando...' : 'Adicionar'}
                 </button>
               </div>
               <div className="modal-content">
@@ -329,22 +382,16 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                     <div className="empty-icon"><Icon name="folder" size={24} /></div>
                     <div className="empty-title">Pasta vazia</div>
                     <div className="empty-text">Adicione vídeos, imagens ou copies para a campanha {activeFolder}.</div>
-                    <button className="btn btn-sm" style={{ marginTop: 16 }} onClick={() => addCreative(activeFolder)}>
-                      <Icon name="upload" size={12} /> Adicionar criativo
-                    </button>
+                    <button className="btn btn-sm" style={{ marginTop: 16 }} onClick={addCreative}><Icon name="upload" size={12} /> Adicionar criativo</button>
                   </div>
                 ) : (
-                  <div>
-                    {uploadError && <div style={{padding: '8px 12px', marginBottom: 8, background: 'var(--danger-dim)', color: 'var(--danger)', borderRadius: 6, fontSize: 12}}>⚠ {uploadError}</div>}
-                    {uploading && <div style={{padding: '8px 12px', marginBottom: 8, color: 'var(--text-2)', fontSize: 12}}>⏳ Enviando arquivo...</div>}
-                    <div className="creatives-grid">
-                      {folderCreatives.map(c => (
-                        <CreativeCard key={c.id} creative={c}
-                          onUpdate={(u) => updateCreative(activeFolder, u)}
-                          onDelete={() => deleteCreative(activeFolder, c.id)} />
-                      ))}
-                      <UploadCard onUpload={() => addCreative(activeFolder)} onDrop={(file) => uploadAndCreate(activeFolder, file)} />
-                    </div>
+                  <div className="creatives-grid">
+                    {folderCreatives.map((c) => (
+                      <CreativeCard key={c.id} creative={c}
+                        onUpdate={(u) => updateCreative(activeFolder, u)}
+                        onDelete={() => deleteCreative(activeFolder, c.id)} />
+                    ))}
+                    <UploadCard onUpload={addCreative} />
                   </div>
                 )}
               </div>
@@ -355,7 +402,6 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
             <ChecklistTab product={product} onUpdate={onUpdate} />
           )}
 
-          {/* Aside */}
           <div className="modal-aside">
             <div className="aside-tabs">
               <button className={`aside-tab ${activeAside === 'comments' ? 'active' : ''}`} onClick={() => setActiveAside('comments')}>
@@ -373,13 +419,13 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                       <div className="empty-icon" style={{ width: 40, height: 40 }}><Icon name="message" size={18} /></div>
                       <div className="empty-text">Sem comentários ainda.</div>
                     </div>
-                  ) : product.comments.map(c => {
-                    const author = users.find(u => u.id === c.authorId);
+                  ) : product.comments.map((c) => {
+                    const author = users.find((u) => u.id === c.authorId);
                     return (
                       <div key={c.id} className="comment">
                         <div className="comment-head" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <Avatar user={author} size={18} />
-                          <span className="comment-author">{author?.name || c.author || 'Anônimo'}</span><span>·</span><span>{timeAgo(c.at)}</span>
+                          <span className="comment-author">{author?.name || 'Anônimo'}</span><span>·</span><span>{timeAgo(c.at)}</span>
                         </div>
                         <div className="comment-text"><MentionedText text={c.text} users={users} currentUserId={currentUser?.id} /></div>
                       </div>
@@ -392,14 +438,14 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                     onSubmit={addComment} />
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
                     <span style={{ fontSize: 11, color: 'var(--text-3)' }}>@ pra mencionar · ⌘+Enter pra enviar</span>
-                    <button className="btn btn-sm btn-primary" onClick={addComment} disabled={!commentText.trim()}>Comentar</button>
+                    <button className="btn btn-sm btn-primary" onClick={addComment} disabled={!commentText.trim() || saving}>Comentar</button>
                   </div>
                 </div>
               </>
             ) : (
               <>
                 <div className="history-filter">
-                  <select value={historyFilter} onChange={e => setHistoryFilter(e.target.value)}>
+                  <select value={historyFilter} onChange={(e) => setHistoryFilter(e.target.value)}>
                     <option value="all">Todos os eventos</option>
                     <option value="move">Movimentações</option>
                     <option value="metric">Métricas</option>
@@ -409,8 +455,8 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                 <div className="aside-body">
                   {filteredHistory.length === 0 ? (
                     <div className="empty" style={{ padding: '40px 8px' }}><div className="empty-text">Sem eventos.</div></div>
-                  ) : filteredHistory.map(h => {
-                    const by = users.find(u => u.id === h.byId);
+                  ) : filteredHistory.map((h) => {
+                    const by = users.find((u) => u.id === h.byId);
                     return (
                       <div key={h.id} className="history-item">
                         <div className={`history-dot ${h.type || ''}`} />

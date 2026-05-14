@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import pool from '../config/db.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { AppError } from '../lib/errors.js';
 
@@ -39,10 +39,10 @@ router.get('/products/:id/metrics/aggregate', requireAuth, async (req, res, next
   } catch (err) { next(err); }
 });
 
-// POST /products/:id/metrics
+// POST /products/:id/metrics — upsert on (product_id, date)
 const createMetricSchema = z.object({
   body: z.object({
-    date: z.string(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido (YYYY-MM-DD)'),
     time: z.string().optional(),
     cost: z.number().min(0).default(0),
     bid: z.number().min(0).optional(),
@@ -54,26 +54,62 @@ const createMetricSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
 });
 
-router.post('/products/:id/metrics', requireAuth, validate(createMetricSchema), async (req, res, next) => {
+router.post('/products/:id/metrics', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(createMetricSchema), async (req, res, next) => {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     const { id } = req.validated.params;
     const { date, time, cost, bid, budget, sales, revenue, note } = req.validated.body;
 
-    const { rows } = await pool.query(
+    // Verify product exists
+    const prod = await client.query('SELECT id, name FROM products WHERE id = $1 AND archived_at IS NULL', [id]);
+    if (prod.rows.length === 0) throw AppError.notFound('Produto não encontrado');
+
+    // Upsert — replaces existing entry for same product+date
+    const { rows } = await client.query(
       `INSERT INTO metrics (product_id, date, time, cost, bid, budget, sales, revenue, note, logged_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (product_id, date) DO UPDATE SET
+         time = EXCLUDED.time,
+         cost = EXCLUDED.cost,
+         bid = EXCLUDED.bid,
+         budget = EXCLUDED.budget,
+         sales = EXCLUDED.sales,
+         revenue = EXCLUDED.revenue,
+         note = EXCLUDED.note,
+         logged_by = EXCLUDED.logged_by
        RETURNING *`,
       [id, date, time || null, cost, bid || null, budget || null, sales, revenue, note || null, req.user.id],
     );
 
+    // History + activity
+    await client.query(
+      'INSERT INTO product_history (product_id, type, text, by_id) VALUES ($1, $2, $3, $4)',
+      [id, 'metric', `Métrica registrada em ${date}`, req.user.id],
+    );
+
+    await client.query(
+      `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      ['metric', id, prod.rows[0].name, req.user.id, 'atualizou métricas', date],
+    );
+
+    await client.query('COMMIT');
+
     res.status(201).json({ metric: rows[0] });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // PATCH /metrics/:id
 const patchMetricSchema = z.object({
   body: z.object({
-    date: z.string().optional(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido (YYYY-MM-DD)').optional(),
     time: z.string().optional().nullable(),
     cost: z.number().min(0).optional(),
     bid: z.number().min(0).optional().nullable(),
@@ -85,7 +121,7 @@ const patchMetricSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
 });
 
-router.patch('/metrics/:id', requireAuth, validate(patchMetricSchema), async (req, res, next) => {
+router.patch('/metrics/:id', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(patchMetricSchema), async (req, res, next) => {
   try {
     const { id } = req.validated.params;
     const { date, time, cost, bid, budget, sales, revenue, note } = req.validated.body;
@@ -119,7 +155,7 @@ router.patch('/metrics/:id', requireAuth, validate(patchMetricSchema), async (re
 });
 
 // DELETE /metrics/:id
-router.delete('/metrics/:id', requireAuth, async (req, res, next) => {
+router.delete('/metrics/:id', requireAuth, requireRole('admin', 'gestor'), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows } = await pool.query(

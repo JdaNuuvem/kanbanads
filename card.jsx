@@ -32,6 +32,13 @@ const ProductCard = ({ product, onOpen, onToggleFav, onOpenChecklist, onDragStar
         >
           <Icon name={product.favorite ? 'starFill' : 'star'} size={14} />
         </button>
+        <button
+          className={`card-fav ${product.reserved_by ? 'active reserved' : ''}`}
+          onClick={(e) => { e.stopPropagation(); onToggleReserve && onToggleReserve(product.id); }}
+          title={product.reserved_by ? `Reservado por ${product.reserved_by_name || 'alguém'} — clique para liberar` : 'Reservar para você'}
+        >
+          <Icon name="lock" size={12} />
+        </button>
       </div>
 
       {labels.length > 0 && !compact && (
@@ -41,6 +48,13 @@ const ProductCard = ({ product, onOpen, onToggleFav, onOpenChecklist, onDragStar
               {l.name}
             </span>
           ))}
+        </div>
+      )}
+
+      {product.reserved_by && (
+        <div className="card-reserved-badge" title="Produto reservado">
+          <Icon name="lock" size={11} />
+          <span>Reservado por: {product.reserved_by_name || 'Alguém'}</span>
         </div>
       )}
 

@@ -7,10 +7,20 @@ const router = Router();
 // GET / — cursor pagination
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const { type, user, product, from, to, limit: limitStr, cursor } = req.query;
+    const { type, user, product, workspace_id, from, to, limit: limitStr, cursor } = req.query;
     const conditions = [];
     const values = [];
     let p = 0;
+
+    // Workspace filter
+    if (workspace_id) {
+      p++; conditions.push(`a.workspace_id = $${p}`); values.push(workspace_id);
+    } else {
+      // Show activity from all workspaces the user belongs to
+      p++;
+      conditions.push(`(a.workspace_id IS NULL OR a.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $${p}))`);
+      values.push(req.user.id);
+    }
 
     if (type) { p++; conditions.push(`a.type = $${p}`); values.push(type); }
     if (user) { p++; conditions.push(`a.by_id = $${p}`); values.push(user); }
@@ -36,7 +46,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 
     const { rows } = await pool.query(
       `SELECT
-         a.id, a.type, a.product_id, a.product_name, a.by_id, a.text, a.snippet, a.payload, a.at,
+         a.id, a.type, a.product_id, a.product_name, a.by_id, a.text, a.snippet, a.payload, a.at, a.workspace_id,
          u.name AS by_name, u.color AS by_color
        FROM activity a
        LEFT JOIN users u ON u.id = a.by_id
@@ -64,16 +74,25 @@ router.get('/', requireAuth, async (req, res, next) => {
 // GET /me — personal feed
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    const { limit: limitStr, cursor } = req.query;
+    const { workspace_id, limit: limitStr, cursor } = req.query;
     const limit = Math.min(parseInt(limitStr) || 50, 200);
     const values = [req.user.id];
+    let idx = 2;
+
+    let wsCondition = '';
+    if (workspace_id) {
+      wsCondition = `AND a.workspace_id = $${idx}`;
+      values.push(workspace_id);
+      idx++;
+    }
 
     let cursorCondition = '';
     if (cursor) {
       const [cursorAt, cursorId] = cursor.split(';');
       if (cursorAt && cursorId) {
-        cursorCondition = 'AND (a.at, a.id) < ($2::timestamptz, $3::uuid)';
+        cursorCondition = `AND (a.at, a.id) < ($${idx}::timestamptz, $${idx + 1}::uuid)`;
         values.push(cursorAt, cursorId);
+        idx += 2;
       }
     }
 
@@ -82,12 +101,12 @@ router.get('/me', requireAuth, async (req, res, next) => {
 
     const { rows } = await pool.query(
       `SELECT DISTINCT ON (a.id)
-         a.id, a.type, a.product_id, a.product_name, a.by_id, a.text, a.snippet, a.payload, a.at,
+         a.id, a.type, a.product_id, a.product_name, a.by_id, a.text, a.snippet, a.payload, a.at, a.workspace_id,
          u.name AS by_name, u.color AS by_color
        FROM activity a
        JOIN activity_targets at ON at.activity_id = a.id
        LEFT JOIN users u ON u.id = a.by_id
-       WHERE at.user_id = $1 ${cursorCondition}
+       WHERE at.user_id = $1 ${wsCondition} ${cursorCondition}
        ORDER BY a.at DESC, a.id DESC
        LIMIT ${limitPh}`,
       values,

@@ -144,6 +144,8 @@ const apiProducts = {
   addChecklistItem: (id, itemId, text) => api.post(`/products/${id}/checklist`, { item_id: itemId, text }),
   removeChecklistItem: (id, itemId) => api.delete(`/products/${id}/checklist/${itemId}`),
   history: (id) => api.get(`/products/${id}/history`),
+  reserve: (id) => api.post(`/products/${id}/reserve`),
+  release: (id) => api.post(`/products/${id}/release`),
 };
 
 const apiMetrics = {
@@ -222,6 +224,18 @@ const apiExportImport = {
   exportCsv: (type) => api.get(`/export/csv?type=${type}`),
 };
 
+const apiWorkspaces = {
+  list: () => api.get('/workspaces'),
+  get: (id) => api.get(`/workspaces/${id}`),
+  create: (data) => api.post('/workspaces', data),
+  update: (id, data) => api.patch(`/workspaces/${id}`, data),
+  remove: (id) => api.delete(`/workspaces/${id}`),
+  addMember: (id, userId, role) => api.post(`/workspaces/${id}/members`, { user_id: userId, role }),
+  removeMember: (id, userId) => api.delete(`/workspaces/${id}/members/${userId}`),
+  updateMember: (id, userId, role) => api.patch(`/workspaces/${id}/members/${userId}`, { role }),
+  leave: (id) => api.post(`/workspaces/${id}/leave`),
+};
+
 const apiUploads = {
   sign: (filename, contentType) => {
     const qs = new URLSearchParams({ filename, contentType }).toString();
@@ -287,6 +301,7 @@ const sseClient = new SSEClient();
 
 // ===== Export =====
 
+window.apiFetch = apiFetch;
 window.API_BASE = API_BASE;
 window.api = api;
 window.apiAuth = apiAuth;
@@ -300,6 +315,7 @@ window.apiNotifications = apiNotifications;
 window.apiDashboard = apiDashboard;
 window.apiCatalogs = apiCatalogs;
 window.apiExportImport = apiExportImport;
+window.apiWorkspaces = apiWorkspaces;
 window.apiUploads = apiUploads;
 window.sseClient = sseClient;
 window.getToken = getToken;

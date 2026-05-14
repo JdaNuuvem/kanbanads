@@ -43,7 +43,7 @@ const Avatar = ({ user, size = 24 }) => {
 };
 
 // User switcher dropdown
-const UserSwitcher = ({ users, currentUser, onSwitch, onLogout, onManage }) => {
+const UserSwitcher = ({ users, currentUser, onSwitch, onLogout, onManage, onManageWs }) => {
   const [open, setOpen] = React.useState(false);
   return (
     <div style={{ position: 'relative' }}>
@@ -61,6 +61,11 @@ const UserSwitcher = ({ users, currentUser, onSwitch, onLogout, onManage }) => {
           {currentUser?.role === 'admin' && (
             <div className="popover-item" onClick={() => { onManage(); setOpen(false); }}>
               <Icon name="settings" size={14} /> Gerenciar equipe
+            </div>
+          )}
+          {onManageWs && (
+            <div className="popover-item" onClick={() => { onManageWs(); setOpen(false); }}>
+              <Icon name="layers" size={14} /> Gerenciar workspace
             </div>
           )}
           <div className="popover-divider" />

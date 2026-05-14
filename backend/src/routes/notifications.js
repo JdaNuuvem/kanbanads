@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../config/db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { AppError } from '../lib/errors.js';
 
 const router = Router();
 
@@ -75,7 +76,7 @@ router.patch('/:id/read', requireAuth, async (req, res, next) => {
       [id, req.user.id],
     );
 
-    if (rows.length === 0) throw Object.assign(new Error('Notificação não encontrada'), { statusCode: 404 });
+    if (rows.length === 0) throw AppError.notFound('Notificação não encontrada');
     res.json({ notification: rows[0] });
   } catch (err) { next(err); }
 });
@@ -102,7 +103,7 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
       [id, req.user.id],
     );
 
-    if (rows.length === 0) throw Object.assign(new Error('Notificação não encontrada'), { statusCode: 404 });
+    if (rows.length === 0) throw AppError.notFound('Notificação não encontrada');
     res.json({ id: rows[0].id, deleted: true });
   } catch (err) { next(err); }
 });

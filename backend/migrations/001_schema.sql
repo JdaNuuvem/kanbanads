@@ -5,6 +5,7 @@
 -- Cria extensões necessárias
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";   -- gen_random_uuid()
 CREATE EXTENSION IF NOT EXISTS "citext";     -- emails case-insensitive
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";    -- fuzzy search (gin_trgm_ops)
 
 -- ============================================================================
 -- LIMPEZA (rodar em dev só) — descomentar pra resetar
@@ -45,6 +46,32 @@ CREATE TABLE users (
 CREATE INDEX idx_users_active ON users(active) WHERE active = true;
 
 -- ============================================================================
+-- WORKSPACES — cada workspace é um kanban isolado
+-- ============================================================================
+CREATE TABLE workspaces (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT NOT NULL,
+  description TEXT,
+  color       TEXT NOT NULL DEFAULT 'oklch(0.72 0.12 240)',
+  created_by  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  is_default  BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX idx_workspaces_default ON workspaces(is_default) WHERE is_default = true;
+
+CREATE TABLE workspace_members (
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role         TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','admin','member','viewer')),
+  joined_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id, user_id)
+);
+
+CREATE INDEX idx_ws_members_user ON workspace_members(user_id);
+
+-- ============================================================================
 -- CATÁLOGOS (estágios e labels)
 -- ============================================================================
 CREATE TABLE stages (
@@ -82,6 +109,8 @@ CREATE TABLE products (
   start_date       DATE,
   supplier         TEXT,
   created_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+  reserved_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+  reserved_at      TIMESTAMPTZ,
   entered_stage_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   archived_at      TIMESTAMPTZ,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -91,8 +120,7 @@ CREATE TABLE products (
 CREATE INDEX idx_products_stage          ON products(stage_id) WHERE archived_at IS NULL;
 CREATE INDEX idx_products_favorite       ON products(favorite) WHERE favorite = true;
 CREATE INDEX idx_products_entered_stage  ON products(stage_id, entered_stage_at);
--- CREATE INDEX idx_products_name_trgm      ON products USING gin (name gin_trgm_ops);
--- (pg_trgm extension not available in postgres:18-alpine; requires contrib)
+CREATE INDEX idx_products_name_trgm      ON products USING gin (name gin_trgm_ops);
 
 -- M2M: produto ↔ labels
 CREATE TABLE product_labels (
@@ -170,6 +198,7 @@ CREATE TABLE metrics (
 
 CREATE INDEX idx_metrics_product_date ON metrics(product_id, date DESC);
 CREATE INDEX idx_metrics_date         ON metrics(date);
+CREATE UNIQUE INDEX idx_metrics_unique ON metrics(product_id, date);
 
 -- ============================================================================
 -- COMENTÁRIOS + MENÇÕES
@@ -204,6 +233,7 @@ CREATE TABLE activity (
   product_id    UUID REFERENCES products(id) ON DELETE SET NULL,
   product_name  TEXT,                         -- snapshot (sobrevive a delete)
   by_id         UUID REFERENCES users(id) ON DELETE SET NULL,
+  workspace_id  UUID REFERENCES workspaces(id) ON DELETE SET NULL,
   text          TEXT NOT NULL,
   snippet       TEXT,
   payload       JSONB,                        -- {from_stage, to_stage, …}
@@ -214,6 +244,7 @@ CREATE INDEX idx_activity_at         ON activity(at DESC);
 CREATE INDEX idx_activity_product    ON activity(product_id, at DESC);
 CREATE INDEX idx_activity_by         ON activity(by_id, at DESC);
 CREATE INDEX idx_activity_type       ON activity(type);
+CREATE INDEX idx_activity_workspace  ON activity(workspace_id, at DESC);
 CREATE INDEX idx_activity_payload_gin ON activity USING gin (payload);
 
 -- Quem foi afetado por cada evento (mencionado / responsável / watcher)
@@ -266,6 +297,7 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER tr_users_updated_at      BEFORE UPDATE ON users      FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 CREATE TRIGGER tr_products_updated_at   BEFORE UPDATE ON products   FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 CREATE TRIGGER tr_creatives_updated_at  BEFORE UPDATE ON creatives  FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
+CREATE TRIGGER tr_workspaces_updated_at BEFORE UPDATE ON workspaces FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 
 -- entered_stage_at automático ao mudar stage_id
 CREATE OR REPLACE FUNCTION trg_stage_change() RETURNS TRIGGER AS $$

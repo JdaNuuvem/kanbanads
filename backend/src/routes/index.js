@@ -13,6 +13,7 @@ import dashboardRouter from './dashboard.js';
 import exportImportRouter from './exportImport.js';
 import eventsRouter from './events.js';
 import uploadsRouter from './uploads.js';
+import workspacesRouter from './workspaces.js';
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use('/dashboard', dashboardRouter);
 router.use('/', exportImportRouter);
 router.use('/', eventsRouter);
 router.use('/', uploadsRouter);
+router.use('/', workspacesRouter);
 
 export default router;

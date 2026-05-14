@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import pool from '../config/db.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { AppError } from '../lib/errors.js';
-import { emitToAll } from '../lib/sse.js';
 
 const router = Router();
 
@@ -20,7 +19,7 @@ router.get('/products/:id/creatives', requireAuth, async (req, res, next) => {
 
     if (folder) { p++; query += ` AND folder = $${p}`; values.push(folder); }
 
-    query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY added_at DESC';
 
     const { rows } = await pool.query(query, values);
     res.json({ creatives: rows });
@@ -43,20 +42,46 @@ const createCreativeSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
 });
 
-router.post('/products/:id/creatives', requireAuth, validate(createCreativeSchema), async (req, res, next) => {
+router.post('/products/:id/creatives', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(createCreativeSchema), async (req, res, next) => {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     const { id } = req.validated.params;
     const { folder, name, type, version, status, size, body_text, link, tags } = req.validated.body;
 
-    const { rows } = await pool.query(
+    // Verify product exists
+    const prod = await client.query('SELECT id, name FROM products WHERE id = $1 AND archived_at IS NULL', [id]);
+    if (prod.rows.length === 0) throw AppError.notFound('Produto não encontrado');
+
+    const { rows } = await client.query(
       `INSERT INTO creatives (product_id, folder, name, type, version, status, size, body_text, link, tags, added_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [id, folder, name, type, version, status, size || null, body_text || null, link || null, tags || [], req.user.id],
     );
 
+    // History + activity
+    await client.query(
+      'INSERT INTO product_history (product_id, type, text, by_id) VALUES ($1, $2, $3, $4)',
+      [id, 'creative', `Criativo "${name}" adicionado em ${folder}`, req.user.id],
+    );
+
+    await client.query(
+      `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      ['edit', id, prod.rows[0].name, req.user.id, 'adicionou criativo', `${folder}: ${name}`],
+    );
+
+    await client.query('COMMIT');
+
     res.status(201).json({ creative: rows[0] });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // PATCH /creatives/:id
@@ -76,20 +101,32 @@ const patchCreativeSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
 });
 
-router.patch('/creatives/:id', requireAuth, validate(patchCreativeSchema), async (req, res, next) => {
+router.patch('/creatives/:id', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(patchCreativeSchema), async (req, res, next) => {
   try {
     const { id } = req.validated.params;
     const body = req.validated.body;
+
+    const columnMap = {
+      body_text: 'body_text',
+      name: 'name',
+      status: 'status',
+      ctr: 'ctr',
+      cpm: 'cpm',
+      spent: 'spent',
+      link: 'link',
+      size: 'size',
+      tags: 'tags',
+      version: 'version',
+    };
 
     const updates = [];
     const values = [];
     let p = 0;
 
     for (const [key, val] of Object.entries(body)) {
-      if (val !== undefined) {
+      if (val !== undefined && columnMap[key]) {
         p++;
-        const dbKey = key === 'body_text' ? 'body_text' : key;
-        updates.push(`${dbKey} = $${p}`);
+        updates.push(`${columnMap[key]} = $${p}`);
         values.push(val);
       }
     }
@@ -108,7 +145,7 @@ router.patch('/creatives/:id', requireAuth, validate(patchCreativeSchema), async
 });
 
 // DELETE /creatives/:id
-router.delete('/creatives/:id', requireAuth, async (req, res, next) => {
+router.delete('/creatives/:id', requireAuth, requireRole('admin', 'gestor', 'editor'), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows } = await pool.query(
@@ -128,7 +165,7 @@ const moveFolderSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
 });
 
-router.patch('/creatives/:id/folder', requireAuth, validate(moveFolderSchema), async (req, res, next) => {
+router.patch('/creatives/:id/folder', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(moveFolderSchema), async (req, res, next) => {
   try {
     const { id } = req.validated.params;
     const { folder } = req.validated.body;
@@ -144,7 +181,7 @@ router.patch('/creatives/:id/folder', requireAuth, validate(moveFolderSchema), a
 });
 
 // POST /creatives/:id/duplicate
-router.post('/creatives/:id/duplicate', requireAuth, async (req, res, next) => {
+router.post('/creatives/:id/duplicate', requireAuth, requireRole('admin', 'gestor', 'editor'), async (req, res, next) => {
   try {
     const { id } = req.params;
 

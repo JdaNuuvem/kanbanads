@@ -4,6 +4,10 @@ import pool from '../config/db.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev-secret-change-me') {
+  console.warn('[auth] WARNING: Using default JWT_SECRET. Set JWT_SECRET in environment for production.');
+}
+
 export function signToken(user) {
   return jwt.sign(
     { sub: user.id, role: user.role },
