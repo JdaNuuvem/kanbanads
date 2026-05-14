@@ -145,7 +145,7 @@ const CreativeCard = ({ creative, onUpdate, onDelete }) => {
   );
 };
 
-const UploadCard = ({ onUpload, onDrop }) => {
+const UploadCard = ({ onUpload, onDrop, onLinkClick }) => {
   const [done, setDone] = React.useState(false);
   const [dragover, setDragover] = React.useState(false);
 
@@ -156,20 +156,30 @@ const UploadCard = ({ onUpload, onDrop }) => {
     if (file && onDrop) { onDrop(file); setDone(true); setTimeout(() => setDone(false), 1200); }
   };
 
-  const handleClick = () => { onUpload(); setDone(true); setTimeout(() => setDone(false), 1200); };
+  const handleClick = () => { if (onUpload) { onUpload(); setDone(true); setTimeout(() => setDone(false), 1200); } };
 
   if (done) {
     return <div className="upload-card" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}><Icon name="check" size={24} /><div>Adicionado!</div></div>;
   }
   return (
-    <button className="upload-card"
-      style={dragover ? { borderColor: 'var(--accent)', color: 'var(--accent)', background: 'var(--bg-1)' } : {}}
-      onClick={handleClick}
+    <div className="upload-card" style={{ ...(dragover ? { borderColor: 'var(--accent)', color: 'var(--accent)', background: 'var(--bg-1)' } : {}), gap: 6 }}
       onDragOver={(e) => { e.preventDefault(); setDragover(true); }}
       onDragLeave={() => setDragover(false)}
       onDrop={handleDrop}>
-      <Icon name="upload" size={22} /><div>{dragover ? 'Solte aqui' : 'Upload ou arraste\ncriativo'}</div>
-    </button>
+      <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+        <button className="btn btn-sm" style={{ flex: 1, background: 'transparent', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-2)', fontSize: 11, padding: '4px 8px', cursor: 'pointer', textAlign: 'center' }}
+          onClick={handleClick}>
+          <Icon name="upload" size={14} /><div style={{ fontSize: 10, marginTop: 2 }}>Upload</div>
+        </button>
+        {onLinkClick && (
+          <button className="btn btn-sm" style={{ flex: 1, background: 'transparent', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-2)', fontSize: 11, padding: '4px 8px', cursor: 'pointer', textAlign: 'center' }}
+            onClick={(e) => { e.stopPropagation(); onLinkClick(); }}>
+            <Icon name="link" size={14} /><div style={{ fontSize: 10, marginTop: 2 }}>Link</div>
+          </button>
+        )}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text-3)', textAlign: 'center' }}>{dragover ? 'Solte aqui' : 'Upload ou arraste criativo'}</div>
+    </div>
   );
 };
 

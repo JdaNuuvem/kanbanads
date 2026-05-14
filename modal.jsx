@@ -10,6 +10,10 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
   const [showMenu, setShowMenu] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(null);
+  const [showLinkInput, setShowLinkInput] = React.useState(false);
+  const [linkUrl, setLinkUrl] = React.useState('');
+  const [linkName, setLinkName] = React.useState('');
+  const [linkType, setLinkType] = React.useState('video');
 
   const showError = (msg) => { setError(msg); setTimeout(() => setError(null), 5000); };
 
@@ -133,6 +137,34 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
       }
     };
     picker.click();
+  };
+
+  // Add creative via link (URL)
+  const submitLink = async () => {
+    if (!linkUrl.trim()) return;
+    setSaving(true);
+    try {
+      await apiCreatives.create(product.id, {
+        folder: activeFolder,
+        name: linkName.trim() || linkUrl.split('/').pop() || 'link',
+        type: linkType,
+        version: 1,
+        status: 'rascunho',
+        size: '—',
+        link: linkUrl.trim(),
+        tags: [],
+      });
+      const fullProduct = await apiProducts.get(product.id);
+      onUpdate(mapProductLocally(fullProduct.product));
+      setShowLinkInput(false);
+      setLinkUrl('');
+      setLinkName('');
+      setLinkType('video');
+    } catch (err) {
+      showError(err.message || 'Erro ao adicionar link');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Update creative via API
@@ -372,9 +404,34 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                   <Icon name="folderFill" size={16} /> {activeFolder}
                   <span style={{ color: 'var(--text-3)', fontWeight: 400, marginLeft: 4 }}>· {folderCreatives.length} criativos</span>
                 </div>
-                <button className="btn btn-sm btn-primary" style={{ marginLeft: 'auto' }} onClick={addCreative} disabled={saving}>
-                  <Icon name="plus" size={12} /> {saving ? 'Enviando...' : 'Adicionar'}
-                </button>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {showLinkInput ? (
+                    <>
+                      <input className="meta-input" style={{ width: 240 }} placeholder="https://..." value={linkUrl} onChange={e => setLinkUrl(e.target.value)} autoFocus />
+                      <input className="meta-input" style={{ width: 140 }} placeholder="Nome (opcional)" value={linkName} onChange={e => setLinkName(e.target.value)} />
+                      <select value={linkType} onChange={e => setLinkType(e.target.value)}
+                        style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-0)', fontSize: 12, padding: '4px 6px' }}>
+                        <option value="video">Vídeo</option>
+                        <option value="image">Imagem</option>
+                      </select>
+                      <button className="btn btn-sm btn-primary" onClick={submitLink} disabled={saving || !linkUrl.trim()}>
+                        <Icon name="check" size={12} /> {saving ? 'Salvando...' : 'Salvar'}
+                      </button>
+                      <button className="btn btn-sm btn-ghost" onClick={() => { setShowLinkInput(false); setLinkUrl(''); setLinkName(''); }}>
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="btn btn-sm btn-primary" onClick={addCreative} disabled={saving}>
+                        <Icon name="upload" size={12} /> {saving ? 'Enviando...' : 'Upload'}
+                      </button>
+                      <button className="btn btn-sm btn-ghost" onClick={() => setShowLinkInput(true)}>
+                        <Icon name="link" size={12} /> Link
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               <div className="modal-content">
                 {folderCreatives.length === 0 ? (
@@ -382,7 +439,10 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                     <div className="empty-icon"><Icon name="folder" size={24} /></div>
                     <div className="empty-title">Pasta vazia</div>
                     <div className="empty-text">Adicione vídeos, imagens ou copies para a campanha {activeFolder}.</div>
-                    <button className="btn btn-sm" style={{ marginTop: 16 }} onClick={addCreative}><Icon name="upload" size={12} /> Adicionar criativo</button>
+                    <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+                      <button className="btn btn-sm" onClick={addCreative}><Icon name="upload" size={12} /> Upload</button>
+                      <button className="btn btn-sm" onClick={() => setShowLinkInput(true)}><Icon name="link" size={12} /> Link</button>
+                    </div>
                   </div>
                 ) : (
                   <div className="creatives-grid">
@@ -391,7 +451,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                         onUpdate={(u) => updateCreative(activeFolder, u)}
                         onDelete={() => deleteCreative(activeFolder, c.id)} />
                     ))}
-                    <UploadCard onUpload={addCreative} />
+                    <UploadCard onUpload={addCreative} onLinkClick={() => setShowLinkInput(true)} />
                   </div>
                 )}
               </div>
