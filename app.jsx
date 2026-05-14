@@ -101,7 +101,7 @@ const App = () => {
             apiActivity.list({ workspace_id: activeWs.id, limit: 50 }),
             apiNotifications.list({ limit: 100 }),
           ]);
-          setProducts(productsData.products || []);
+          setProducts((productsData.products || []).map(mapProduct));
           setActivity(activityData.activity || []);
           setNotifications(notifsData.notifications || []);
         }
@@ -434,7 +434,7 @@ const App = () => {
         apiProducts.list({ workspace_id: ws.id, limit: 500 }),
         apiActivity.list({ workspace_id: ws.id, limit: 50 }),
       ]);
-      setProducts(productsData.products || []);
+      setProducts((productsData.products || []).map(mapProduct));
       setActivity(activityData.activity || []);
     } catch (err) {
       setError(err.message);
