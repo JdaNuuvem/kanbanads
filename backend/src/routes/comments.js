@@ -122,6 +122,7 @@ router.post('/products/:id/comments', requireAuth, requireRole('admin', 'gestor'
     }
 
     // Mention activities + targets (one per mentioned user)
+    const mentionEvents = [];
     for (const uid of mentionedIds) {
       if (uid === req.user.id) continue;
 
@@ -136,14 +137,7 @@ router.post('/products/:id/comments', requireAuth, requireRole('admin', 'gestor'
         [mentionAct.rows[0].id, uid, 'mention'],
       );
 
-      emitToUser(uid, 'notification.new', {
-        activity_id: mentionAct.rows[0].id,
-        type: 'mention',
-        product_id: id,
-        product_name: product.rows[0].name,
-        by_name: req.user.name,
-        workspace_id: product.rows[0].workspace_id,
-      });
+      mentionEvents.push({ uid, activity_id: mentionAct.rows[0].id });
     }
 
     await client.query(
@@ -152,6 +146,17 @@ router.post('/products/:id/comments', requireAuth, requireRole('admin', 'gestor'
     );
 
     await client.query('COMMIT');
+
+    for (const evt of mentionEvents) {
+      emitToUser(evt.uid, 'notification.new', {
+        activity_id: evt.activity_id,
+        type: 'mention',
+        product_id: id,
+        product_name: product.rows[0].name,
+        by_name: req.user.name,
+        workspace_id: product.rows[0].workspace_id,
+      });
+    }
 
     emitToAll('activity.new', { activity_id: commentActivityId, product_id: id, workspace_id: product.rows[0].workspace_id });
 

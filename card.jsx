@@ -1,5 +1,5 @@
 // Card with metrics, time-in-stage, checklist progress, assignee
-const ProductCard = ({ product, onOpen, onToggleFav, onOpenChecklist, onDragStart, onDragEnd, isDragging, compact, users = [] }) => {
+const ProductCard = ({ product, onOpen, onToggleFav, onToggleReserve, onOpenChecklist, onDragStart, onDragEnd, isDragging, compact, users = [] }) => {
   const assigneeIds = product.assigneeIds || [];
   const folderCounts = FOLDERS.map(f => ({ name: f, count: product.creatives[f]?.length || 0 }));
   const totalCreatives = folderCounts.reduce((s, f) => s + f.count, 0);

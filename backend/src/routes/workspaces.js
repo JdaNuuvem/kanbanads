@@ -10,8 +10,9 @@ const router = Router();
 
 // ===== Helpers =====
 
-async function ensureMember(workspaceId, userId) {
-  const { rows } = await pool.query(
+async function ensureMember(workspaceId, userId, client = null) {
+  const db = client || pool;
+  const { rows } = await db.query(
     'SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2',
     [workspaceId, userId],
   );
@@ -19,8 +20,8 @@ async function ensureMember(workspaceId, userId) {
   return rows[0];
 }
 
-async function ensureOwnerOrAdmin(workspaceId, userId) {
-  const member = await ensureMember(workspaceId, userId);
+async function ensureOwnerOrAdmin(workspaceId, userId, client = null) {
+  const member = await ensureMember(workspaceId, userId, client);
   if (member.role !== 'owner' && member.role !== 'admin') {
     throw AppError.forbidden('Apenas owner/admin podem gerenciar o workspace');
   }
@@ -176,7 +177,7 @@ router.delete('/workspaces/:id', requireAuth, async (req, res, next) => {
     await client.query('BEGIN');
 
     const { id } = req.params;
-    await ensureOwnerOrAdmin(id, req.user.id);
+    await ensureOwnerOrAdmin(id, req.user.id, client);
 
     const ws = await client.query('SELECT is_default FROM workspaces WHERE id = $1', [id]);
     if (ws.rows.length === 0) throw AppError.notFound('Workspace não encontrado');

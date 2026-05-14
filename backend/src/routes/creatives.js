@@ -51,7 +51,7 @@ router.post('/products/:id/creatives', requireAuth, requireRole('admin', 'gestor
     const { folder, name, type, version, status, size, body_text, link, tags } = req.validated.body;
 
     // Verify product exists
-    const prod = await client.query('SELECT id, name FROM products WHERE id = $1 AND archived_at IS NULL', [id]);
+    const prod = await client.query('SELECT id, name, workspace_id FROM products WHERE id = $1 AND archived_at IS NULL', [id]);
     if (prod.rows.length === 0) throw AppError.notFound('Produto não encontrado');
 
     const { rows } = await client.query(
@@ -68,9 +68,9 @@ router.post('/products/:id/creatives', requireAuth, requireRole('admin', 'gestor
     );
 
     await client.query(
-      `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      ['edit', id, prod.rows[0].name, req.user.id, 'adicionou criativo', `${folder}: ${name}`],
+      `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet, workspace_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      ['edit', id, prod.rows[0].name, req.user.id, 'adicionou criativo', `${folder}: ${name}`, prod.rows[0].workspace_id],
     );
 
     await client.query('COMMIT');

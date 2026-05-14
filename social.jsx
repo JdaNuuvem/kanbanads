@@ -536,7 +536,7 @@ const WorkloadChart = ({ products, users, onOpenProduct }) => {
                 <div className="workload-name">
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{s.user.name}</div>
                   <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {ROLE_LABELS[s.user.role]}
+                    {(window.ROLE_LABELS || {})[s.user.role]}
                   </div>
                 </div>
                 <div className="workload-stats">
@@ -621,7 +621,6 @@ window.MultiAssigneeSelect = MultiAssigneeSelect;
 window.NotificationsBell = NotificationsBell;
 window.ActivityDrawer = ActivityDrawer;
 window.WorkloadChart = WorkloadChart;
-window.makeActivity = makeActivity;
 window.activityIcon = activityIcon;
 window.activityColor = activityColor;
 window.loadActivity = loadActivity;

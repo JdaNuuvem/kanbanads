@@ -377,7 +377,7 @@ router.patch('/products/:id', requireAuth, requireRole('admin', 'gestor', 'edito
     }
 
     p++; values.push(id);
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       `UPDATE products SET ${updates.join(', ')} WHERE id = $${p} AND archived_at IS NULL RETURNING *`,
       values,
     );
@@ -824,7 +824,7 @@ router.post('/products/:id/reserve', requireAuth, requireRole('admin', 'gestor',
     if (prod.rows[0].reserved_by) {
       // Already reserved — check if by someone else
       if (prod.rows[0].reserved_by !== req.user.id) {
-        const { rows: [owner] } = await pool.query('SELECT name FROM users WHERE id = $1', [prod.rows[0].reserved_by]);
+        const { rows: [owner] } = await client.query('SELECT name FROM users WHERE id = $1', [prod.rows[0].reserved_by]);
         throw AppError.conflict(`Produto já está reservado por ${owner?.name || 'outra pessoa'}`);
       }
       // Already reserved by you — nothing to do
@@ -840,7 +840,7 @@ router.post('/products/:id/reserve', requireAuth, requireRole('admin', 'gestor',
     await addHistory(client, id, 'edit', `Reservado por ${req.user.name}`, req.user.id);
     await addActivity(client, {
       type: 'edit', productId: id, productName: prod.rows[0].name,
-      byId: req.user.id, text: 'reservou o produto',
+      byId: req.user.id, text: 'reservou o produto', workspaceId: prod.rows[0].workspace_id,
     });
 
     await client.query('COMMIT');
@@ -889,7 +889,7 @@ router.post('/products/:id/release', requireAuth, requireRole('admin', 'gestor',
     await addHistory(client, id, 'edit', `Reserva liberada por ${req.user.name}`, req.user.id);
     await addActivity(client, {
       type: 'edit', productId: id, productName: prod.rows[0].name,
-      byId: req.user.id, text: 'liberou a reserva',
+      byId: req.user.id, text: 'liberou a reserva', workspaceId: prod.rows[0].workspace_id,
     });
 
     await client.query('COMMIT');

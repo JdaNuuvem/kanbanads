@@ -186,6 +186,5 @@ window.ROLES = ROLES;
 window.PERMISSIONS = PERMISSIONS;
 window.getPerms = getPerms;
 window.Avatar = Avatar;
-window.LoginScreen = LoginScreen;
 window.UserSwitcher = UserSwitcher;
 window.ManageTeamModal = ManageTeamModal;

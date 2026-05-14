@@ -63,7 +63,7 @@ router.post('/products/:id/metrics', requireAuth, requireRole('admin', 'gestor',
     const { date, time, cost, bid, budget, sales, revenue, note } = req.validated.body;
 
     // Verify product exists
-    const prod = await client.query('SELECT id, name FROM products WHERE id = $1 AND archived_at IS NULL', [id]);
+    const prod = await client.query('SELECT id, name, workspace_id FROM products WHERE id = $1 AND archived_at IS NULL', [id]);
     if (prod.rows.length === 0) throw AppError.notFound('Produto não encontrado');
 
     // Upsert — replaces existing entry for same product+date
@@ -90,9 +90,9 @@ router.post('/products/:id/metrics', requireAuth, requireRole('admin', 'gestor',
     );
 
     await client.query(
-      `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      ['metric', id, prod.rows[0].name, req.user.id, 'atualizou métricas', date],
+      `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet, workspace_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      ['metric', id, prod.rows[0].name, req.user.id, 'atualizou métricas', date, prod.rows[0].workspace_id],
     );
 
     await client.query('COMMIT');

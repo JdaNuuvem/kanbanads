@@ -132,11 +132,11 @@ router.get('/dashboard/timeline', requireAuth, async (req, res, next) => {
     }
 
     if (from) { p++; conditions.push(`m.date >= $${p}`); values.push(from); }
-    else { p++; conditions.push(`m.date >= current_date - interval '30 days'`); values.push('__dummy__'); }
+    else { p++; conditions.push(`m.date >= $${p}`); values.push(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)); }
     if (to) { p++; conditions.push(`m.date <= $${p}`); values.push(to); }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const cleanValues = values.filter(v => v !== '__dummy__');
+
 
     const { rows } = await pool.query(
       `SELECT
@@ -150,7 +150,7 @@ router.get('/dashboard/timeline', requireAuth, async (req, res, next) => {
        ${where}
        GROUP BY m.date
        ORDER BY m.date ASC`,
-      cleanValues.length > 0 ? cleanValues : undefined,
+      values.length > 0 ? values : undefined,
     );
 
     res.json({ timeline: rows });

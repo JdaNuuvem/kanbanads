@@ -9,7 +9,7 @@ export async function staleAlertsJob() {
 
     // Find products in "rodando" for > 7 days
     const { rows: staleProducts } = await client.query(`
-      SELECT p.id, p.name, p.entered_stage_at
+      SELECT p.id, p.name, p.entered_stage_at, p.workspace_id
       FROM products p
       WHERE p.stage_id = 'rodando'
         AND p.archived_at IS NULL
@@ -39,13 +39,14 @@ export async function staleAlertsJob() {
       for (const gestor of gestores) {
         // Create activity
         const { rows: actRows } = await client.query(
-          `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet, payload)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+          `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet, payload, workspace_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
           [
             'edit', product.id, product.name, gestor.id,
             `Produto parado em "Rodando" há ${daysStale} dias`,
             `${product.name} sem movimentação`,
             JSON.stringify({ alert: 'stale', days: daysStale }),
+            product.workspace_id,
           ],
         );
 
@@ -61,6 +62,7 @@ export async function staleAlertsJob() {
           type: 'stale_alert',
           product_id: product.id,
           product_name: product.name,
+          workspace_id: product.workspace_id,
           days_stale: daysStale,
         });
       }

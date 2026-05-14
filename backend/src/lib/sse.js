@@ -12,15 +12,17 @@ export function addSSEClient(userId, res) {
   if (!clients.has(userId)) clients.set(userId, new Set());
   clients.get(userId).add(res);
 
-  const keepAlive = setInterval(() => {
-    try { res.write(':keepalive\n\n'); } catch { clearInterval(keepAlive); }
-  }, 15000);
-
-  res.on('close', () => {
+  const cleanup = () => {
     clearInterval(keepAlive);
     const set = clients.get(userId);
     if (set) { set.delete(res); if (set.size === 0) clients.delete(userId); }
-  });
+  };
+
+  const keepAlive = setInterval(() => {
+    try { res.write(':keepalive\n\n'); } catch { cleanup(); }
+  }, 15000);
+
+  res.on('close', cleanup);
 }
 
 export function emitToUser(userId, event, data) {
