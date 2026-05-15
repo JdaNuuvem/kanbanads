@@ -8,7 +8,7 @@ import { AppError } from '../lib/errors.js';
 const router = Router();
 
 // GET /stages
-router.get('/stages', async (_req, res, next) => {
+router.get('/stages', requireAuth, async (_req, res, next) => {
   try {
     const { rows } = await pool.query(
       'SELECT id, title, position, color, icon FROM stages ORDER BY position',
@@ -18,7 +18,7 @@ router.get('/stages', async (_req, res, next) => {
 });
 
 // GET /labels
-router.get('/labels', async (_req, res, next) => {
+router.get('/labels', requireAuth, async (_req, res, next) => {
   try {
     const { rows } = await pool.query(
       'SELECT id, name, color FROM labels ORDER BY name',
@@ -99,7 +99,7 @@ router.delete('/labels/:id', requireAuth, requireRole('admin'), async (req, res,
 });
 
 // GET /checklists/:stageId
-router.get('/checklists/:stageId', async (req, res, next) => {
+router.get('/checklists/:stageId', requireAuth, async (req, res, next) => {
   try {
     const { stageId } = req.params;
     const { rows } = await pool.query(

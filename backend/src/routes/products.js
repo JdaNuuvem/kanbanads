@@ -6,6 +6,7 @@ import { validate } from '../middleware/validate.js';
 import { AppError } from '../lib/errors.js';
 import { emitToAll, emitToUser } from '../lib/sse.js';
 import logger from '../lib/logger.js';
+import { checkWorkspaceMember, requireWorkspaceWrite, requireWorkspaceManage, requireWorkspaceMember } from '../lib/workspace.js';
 
 const router = Router();
 
@@ -40,7 +41,7 @@ async function addActivity(client, data) {
 async function addActivityTargetsBatch(client, activityId, userIds, reason) {
   if (!userIds || userIds.length === 0) return;
   const values = userIds.flatMap((uid) => [activityId, uid, reason]);
-  const placeholders = userIds.map((_, i) => `($1, $${i * 2 + 2}, $${i * 2 + 3})`).join(', ');
+  const placeholders = userIds.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(', ');
   await client.query(
     `INSERT INTO activity_targets (activity_id, user_id, reason)
      VALUES ${placeholders} ON CONFLICT DO NOTHING`,
@@ -58,7 +59,7 @@ async function addHistory(client, productId, type, text, byId) {
 async function insertAssigneesBatch(client, productId, userIds, assignedBy) {
   if (!userIds || userIds.length === 0) return;
   const values = userIds.flatMap((uid) => [productId, uid, assignedBy]);
-  const placeholders = userIds.map((_, i) => `($1, $${i * 2 + 2}, $${i * 2 + 3})`).join(', ');
+  const placeholders = userIds.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(', ');
   await client.query(
     `INSERT INTO product_assignees (product_id, user_id, assigned_by)
      VALUES ${placeholders} ON CONFLICT DO NOTHING`,
@@ -69,33 +70,12 @@ async function insertAssigneesBatch(client, productId, userIds, assignedBy) {
 async function insertLabelsBatch(client, productId, labelIds) {
   if (!labelIds || labelIds.length === 0) return;
   const values = labelIds.flatMap((lid) => [productId, lid]);
-  const placeholders = labelIds.map((_, i) => `($1, $${i * 2 + 2})`).join(', ');
+  const placeholders = labelIds.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(', ');
   await client.query(
     `INSERT INTO product_labels (product_id, label_id)
      VALUES ${placeholders} ON CONFLICT DO NOTHING`,
     values,
   );
-}
-
-async function checkWorkspaceMember(client, workspaceId, userId) {
-  const { rows } = await client.query(
-    'SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2',
-    [workspaceId, userId],
-  );
-  if (rows.length === 0) throw AppError.forbidden('Você não pertence a este workspace');
-  return rows[0];
-}
-
-// Verifica permissão de escrita (editor/membro ou acima). Viewer = read-only.
-function requireWorkspaceWrite(role) {
-  if (role === 'viewer') throw AppError.forbidden('Visualizadores não podem modificar produtos');
-}
-
-// Verifica permissão de gestão (admin/owner). Member/viewer não podem deletar.
-function requireWorkspaceManage(role) {
-  if (role !== 'owner' && role !== 'admin') {
-    throw AppError.forbidden('Apenas owner/admin podem realizar esta ação');
-  }
 }
 
 // ===== GET /products =====
@@ -107,8 +87,9 @@ router.get('/products', requireAuth, async (req, res, next) => {
     const values = [];
     let paramCount = 0;
 
-    // Workspace filter
+    // Workspace filter — verify membership if explicit workspace_id is provided
     if (workspace_id) {
+      await requireWorkspaceMember(pool, workspace_id, req.user.id);
       paramCount++;
       conditions.push(`p.workspace_id = $${paramCount}`);
       values.push(workspace_id);
@@ -245,6 +226,8 @@ router.get('/products/:id', requireAuth, async (req, res, next) => {
     );
 
     if (rows.length === 0) throw AppError.notFound('Produto não encontrado');
+
+    await checkWorkspaceMember(pool, rows[0].workspace_id, req.user.id);
 
     const { rows: agg } = await pool.query(
       'SELECT * FROM v_product_metrics WHERE product_id = $1',
@@ -484,12 +467,16 @@ router.patch('/products/:id/stage', requireAuth, requireRole('admin', 'gestor', 
 
 // ===== DELETE /products/:id (soft delete) =====
 
-router.delete('/products/:id', requireAuth, requireRole('admin', 'gestor'), async (req, res, next) => {
+const idParamSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+});
+
+router.delete('/products/:id', requireAuth, requireRole('admin', 'gestor'), validate(idParamSchema), async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const { id } = req.params;
+    const { id } = req.validated.params;
 
     // Check product and workspace permission first
     const preCheck = await client.query(
@@ -499,7 +486,7 @@ router.delete('/products/:id', requireAuth, requireRole('admin', 'gestor'), asyn
     if (preCheck.rows.length === 0) throw AppError.notFound('Produto não encontrado');
 
     const wsMember = await checkWorkspaceMember(client, preCheck.rows[0].workspace_id, req.user.id);
-    requireWorkspaceManage(wsMember.role);
+    requireWorkspaceWrite(wsMember.role);
 
     const { rows } = await client.query(
       'UPDATE products SET archived_at = now() WHERE id = $1 AND archived_at IS NULL RETURNING id, name, workspace_id',
@@ -534,12 +521,12 @@ router.delete('/products/:id', requireAuth, requireRole('admin', 'gestor'), asyn
 
 // ===== POST /products/:id/duplicate =====
 
-router.post('/products/:id/duplicate', requireAuth, requireRole('admin', 'gestor', 'editor'), async (req, res, next) => {
+router.post('/products/:id/duplicate', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(idParamSchema), async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const { id } = req.params;
+    const { id } = req.validated.params;
     const original = await client.query(
       'SELECT * FROM products WHERE id = $1 AND archived_at IS NULL',
       [id],
@@ -760,8 +747,11 @@ router.patch('/products/:id/checklist/:itemId', requireAuth, requireRole('admin'
     const { id, itemId } = req.validated.params;
     const { done } = req.validated.body;
 
-    const prod = await client.query('SELECT id, name FROM products WHERE id = $1 AND archived_at IS NULL', [id]);
+    const prod = await client.query('SELECT id, name, workspace_id FROM products WHERE id = $1 AND archived_at IS NULL', [id]);
     if (prod.rows.length === 0) throw AppError.notFound('Produto não encontrado');
+
+    const wsMember = await checkWorkspaceMember(client, prod.rows[0].workspace_id, req.user.id);
+    requireWorkspaceWrite(wsMember.role);
 
     const { rows } = await client.query(
       `INSERT INTO product_checklist (product_id, item_id, done, done_at, done_by)
@@ -788,9 +778,17 @@ router.patch('/products/:id/checklist/:itemId', requireAuth, requireRole('admin'
 
 // ===== GET /products/:id/history =====
 
-router.get('/products/:id/history', requireAuth, async (req, res, next) => {
+router.get('/products/:id/history', requireAuth, validate(idParamSchema), async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const { id } = req.validated.params;
+
+    // Verify product exist and user has access via workspace membership
+    const prod = await pool.query(
+      'SELECT workspace_id FROM products WHERE id = $1 AND archived_at IS NULL',
+      [id],
+    );
+    if (prod.rows.length === 0) throw AppError.notFound('Produto não encontrado');
+    await checkWorkspaceMember(pool, prod.rows[0].workspace_id, req.user.id);
 
     const { rows } = await pool.query(
       `SELECT h.id, h.type, h.text, h.by_id, h.at,
@@ -808,18 +806,21 @@ router.get('/products/:id/history', requireAuth, async (req, res, next) => {
 
 // ===== POST /products/:id/reserve =====
 
-router.post('/products/:id/reserve', requireAuth, requireRole('admin', 'gestor', 'editor'), async (req, res, next) => {
+router.post('/products/:id/reserve', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(idParamSchema), async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const { id } = req.params;
+    const { id } = req.validated.params;
 
     const prod = await client.query(
       'SELECT id, name, reserved_by, workspace_id FROM products WHERE id = $1 AND archived_at IS NULL',
       [id],
     );
     if (prod.rows.length === 0) throw AppError.notFound('Produto não encontrado');
+
+    const wsMember = await checkWorkspaceMember(client, prod.rows[0].workspace_id, req.user.id);
+    requireWorkspaceWrite(wsMember.role);
 
     if (prod.rows[0].reserved_by) {
       // Already reserved — check if by someone else
@@ -858,18 +859,21 @@ router.post('/products/:id/reserve', requireAuth, requireRole('admin', 'gestor',
 
 // ===== POST /products/:id/release =====
 
-router.post('/products/:id/release', requireAuth, requireRole('admin', 'gestor', 'editor'), async (req, res, next) => {
+router.post('/products/:id/release', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(idParamSchema), async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const { id } = req.params;
+    const { id } = req.validated.params;
 
     const prod = await client.query(
       'SELECT id, name, reserved_by, workspace_id FROM products WHERE id = $1 AND archived_at IS NULL',
       [id],
     );
     if (prod.rows.length === 0) throw AppError.notFound('Produto não encontrado');
+
+    const wsMember = await checkWorkspaceMember(client, prod.rows[0].workspace_id, req.user.id);
+    requireWorkspaceWrite(wsMember.role);
 
     if (!prod.rows[0].reserved_by) {
       await client.query('COMMIT');

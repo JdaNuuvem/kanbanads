@@ -44,7 +44,7 @@ const CreativeCard = ({ creative, onUpdate, onDelete }) => {
               className="creative-media-preview"
               muted
               preload="metadata"
-              onMouseEnter={e => { try { e.target.play(); } catch {} }}
+              onMouseEnter={e => { e.target.play().catch(() => {}) }}
               onMouseLeave={e => { try { e.target.pause(); e.target.currentTime = 0; } catch {} }}
             />
           ) : hasMedia && isImage ? (

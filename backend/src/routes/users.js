@@ -61,7 +61,7 @@ router.patch('/me', requireAuth, validate(patchMeSchema), async (req, res, next)
 });
 
 // GET /users
-router.get('/users', requireAuth, async (req, res, next) => {
+router.get('/users', requireAuth, requireRole('admin', 'gestor'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       'SELECT id, name, email, color, role, active, last_seen_at, created_at FROM users WHERE active = true ORDER BY name',

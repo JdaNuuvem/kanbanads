@@ -4,6 +4,7 @@ import pool from '../config/db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { AppError } from '../lib/errors.js';
+import { checkProductWorkspace } from '../lib/workspace.js';
 
 const router = Router();
 
@@ -12,6 +13,8 @@ router.get('/products/:id/metrics', requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { from, to } = req.query;
+
+    await checkProductWorkspace(pool, id, req.user.id);
 
     let query = 'SELECT * FROM metrics WHERE product_id = $1';
     const values = [id];
@@ -31,6 +34,7 @@ router.get('/products/:id/metrics', requireAuth, async (req, res, next) => {
 router.get('/products/:id/metrics/aggregate', requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
+    await checkProductWorkspace(pool, id, req.user.id);
     const { rows } = await pool.query(
       'SELECT * FROM v_product_metrics WHERE product_id = $1',
       [id],
@@ -62,9 +66,8 @@ router.post('/products/:id/metrics', requireAuth, requireRole('admin', 'gestor',
     const { id } = req.validated.params;
     const { date, time, cost, bid, budget, sales, revenue, note } = req.validated.body;
 
-    // Verify product exists
-    const prod = await client.query('SELECT id, name, workspace_id FROM products WHERE id = $1 AND archived_at IS NULL', [id]);
-    if (prod.rows.length === 0) throw AppError.notFound('Produto não encontrado');
+    const prod = await checkProductWorkspace(client, id, req.user.id);
+    if (prod.role === 'viewer') throw AppError.forbidden('Visualizadores não podem modificar métricas');
 
     // Upsert — replaces existing entry for same product+date
     const { rows } = await client.query(
@@ -92,7 +95,7 @@ router.post('/products/:id/metrics', requireAuth, requireRole('admin', 'gestor',
     await client.query(
       `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet, workspace_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      ['metric', id, prod.rows[0].name, req.user.id, 'atualizou métricas', date, prod.rows[0].workspace_id],
+      ['metric', id, prod.name, req.user.id, 'atualizou métricas', date, prod.workspace_id],
     );
 
     await client.query('COMMIT');
@@ -122,9 +125,21 @@ const patchMetricSchema = z.object({
 });
 
 router.patch('/metrics/:id', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(patchMetricSchema), async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const { id } = req.validated.params;
     const { date, time, cost, bid, budget, sales, revenue, note } = req.validated.body;
+
+    const metric = await client.query(
+      `SELECT m.id, p.workspace_id, wm.role
+       FROM metrics m
+       JOIN products p ON p.id = m.product_id
+       JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = $2
+       WHERE m.id = $1`,
+      [id, req.user.id],
+    );
+    if (metric.rows.length === 0) throw AppError.notFound('Métrica não encontrada ou sem acesso');
+    if (metric.rows[0].role === 'viewer') throw AppError.forbidden('Visualizadores não podem modificar métricas');
 
     const updates = [];
     const values = [];
@@ -144,27 +159,43 @@ router.patch('/metrics/:id', requireAuth, requireRole('admin', 'gestor', 'editor
     if (updates.length === 0) throw AppError.validation('Nada para atualizar');
 
     p++; values.push(id);
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       `UPDATE metrics SET ${updates.join(', ')} WHERE id = $${p} RETURNING *`,
       values,
     );
 
     if (rows.length === 0) throw AppError.notFound('Métrica não encontrada');
     res.json({ metric: rows[0] });
-  } catch (err) { next(err); }
+  } catch (err) { next(err); } finally { client.release(); }
 });
 
 // DELETE /metrics/:id
-router.delete('/metrics/:id', requireAuth, requireRole('admin', 'gestor'), async (req, res, next) => {
+const deleteMetricSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+});
+
+router.delete('/metrics/:id', requireAuth, requireRole('admin', 'gestor'), validate(deleteMetricSchema), async (req, res, next) => {
+  const client = await pool.connect();
   try {
-    const { id } = req.params;
-    const { rows } = await pool.query(
+    const { id } = req.validated.params;
+
+    const metric = await client.query(
+      `SELECT m.id, p.workspace_id, wm.role
+       FROM metrics m
+       JOIN products p ON p.id = m.product_id
+       JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = $2
+       WHERE m.id = $1`,
+      [id, req.user.id],
+    );
+    if (metric.rows.length === 0) throw AppError.notFound('Métrica não encontrada ou sem acesso');
+
+    const { rows } = await client.query(
       'DELETE FROM metrics WHERE id = $1 RETURNING id',
       [id],
     );
     if (rows.length === 0) throw AppError.notFound('Métrica não encontrada');
     res.json({ id: rows[0].id, deleted: true });
-  } catch (err) { next(err); }
+  } catch (err) { next(err); } finally { client.release(); }
 });
 
 export default router;

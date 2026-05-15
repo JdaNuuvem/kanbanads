@@ -8,7 +8,21 @@ const router = Router();
 // GET /export
 router.get('/export', requireAuth, async (req, res, next) => {
   try {
-    // Full dump: products + assignees + labels + metrics + creatives + comments
+    const { workspace_id } = req.query;
+    let wsFilter;
+    let wsValues;
+    if (workspace_id) {
+      const memberCheck = await pool.query(
+        'SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2',
+        [workspace_id, req.user.id],
+      );
+      if (memberCheck.rows.length === 0) throw AppError.forbidden('Você não pertence a este workspace');
+      wsFilter = 'AND p.workspace_id = $1';
+      wsValues = [workspace_id];
+    } else {
+      wsFilter = 'AND p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)';
+      wsValues = [req.user.id];
+    }
     const { rows: products } = await pool.query(
       `SELECT
          p.*,
@@ -25,8 +39,9 @@ router.get('/export', requireAuth, async (req, res, next) => {
            '{}'::json
          ) AS checklist
        FROM products p
-       WHERE p.archived_at IS NULL
+       WHERE p.archived_at IS NULL ${wsFilter}
        ORDER BY p.created_at DESC`,
+      wsValues,
     );
 
     const { rows: users } = await pool.query(
@@ -50,16 +65,31 @@ router.get('/export', requireAuth, async (req, res, next) => {
 // GET /export/csv
 router.get('/export/csv', requireAuth, async (req, res, next) => {
   try {
-    const { type } = req.query;
+    const { type, workspace_id } = req.query;
+
+    let wsFilter;
+    let wsValues;
+    if (workspace_id) {
+      const memberCheck = await pool.query(
+        'SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2',
+        [workspace_id, req.user.id],
+      );
+      if (memberCheck.rows.length === 0) throw AppError.forbidden('Você não pertence a este workspace');
+      wsFilter = 'AND p.workspace_id = $1';
+      wsValues = [workspace_id];
+    } else {
+      wsFilter = 'AND p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)';
+      wsValues = [req.user.id];
+    }
 
     if (type === 'products') {
       const { rows } = await pool.query(`
         SELECT p.name, s.title AS stage, p.favorite, p.start_date, p.supplier, p.created_at
         FROM products p
         JOIN stages s ON s.id = p.stage_id
-        WHERE p.archived_at IS NULL
+        WHERE p.archived_at IS NULL ${wsFilter}
         ORDER BY p.created_at DESC
-      `);
+      `, wsValues);
 
       const headers = ['Nome', 'Estágio', 'Favorito', 'Data Início', 'Fornecedor', 'Criado Em'];
       const csv = [
@@ -84,8 +114,9 @@ router.get('/export/csv', requireAuth, async (req, res, next) => {
         SELECT p.name AS product, m.date, m.cost, m.revenue, m.sales, m.cpa, m.note
         FROM metrics m
         JOIN products p ON p.id = m.product_id
+        WHERE p.archived_at IS NULL ${wsFilter}
         ORDER BY m.date DESC
-      `);
+      `, wsValues);
 
       const headers = ['Produto', 'Data', 'Custo', 'Receita', 'Vendas', 'CPA', 'Nota'];
       const csv = [
@@ -117,8 +148,19 @@ router.post('/import', requireAuth, requireRole('admin', 'gestor'), async (req, 
     const data = req.body;
 
     if (!data.products || !Array.isArray(data.products)) {
-      throw AppError.validation('Formato inválido: esperado { products: [...] }');
+      throw AppError.validation('Formato inválido: esperado { products: [...], workspace_id: "..." }');
     }
+
+    if (!data.workspace_id) {
+      throw AppError.validation('workspace_id é obrigatório');
+    }
+
+    const wsMember = await client.query(
+      'SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2',
+      [data.workspace_id, req.user.id],
+    );
+    if (wsMember.rows.length === 0) throw AppError.forbidden('Você não pertence a este workspace');
+    if (wsMember.rows[0].role === 'viewer') throw AppError.forbidden('Viewers não podem importar');
 
     await client.query('BEGIN');
 
@@ -132,17 +174,18 @@ router.post('/import', requireAuth, requireRole('admin', 'gestor'), async (req, 
       if (stageCheck.rows.length === 0) continue;
 
       const { rows } = await client.query(
-        `INSERT INTO products (name, stage_id, color, favorite, start_date, supplier, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO products (name, stage_id, workspace_id, color, favorite, start_date, supplier, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
            stage_id = EXCLUDED.stage_id,
+           workspace_id = EXCLUDED.workspace_id,
            color = EXCLUDED.color,
            favorite = EXCLUDED.favorite,
            start_date = EXCLUDED.start_date,
            supplier = EXCLUDED.supplier
          RETURNING id, (xmax = 0) AS is_insert`,
-        [p.name, p.stage_id, p.color || null, p.favorite || false, p.start_date || null, p.supplier || null, req.user.id],
+        [p.name, p.stage_id, data.workspace_id, p.color || null, p.favorite || false, p.start_date || null, p.supplier || null, req.user.id],
       );
 
       const productId = rows[0].id;

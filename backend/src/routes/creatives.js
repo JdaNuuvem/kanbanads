@@ -4,6 +4,7 @@ import pool from '../config/db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { AppError } from '../lib/errors.js';
+import { checkProductWorkspace } from '../lib/workspace.js';
 
 const router = Router();
 
@@ -12,6 +13,8 @@ router.get('/products/:id/creatives', requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { folder } = req.query;
+
+    await checkProductWorkspace(pool, id, req.user.id);
 
     let query = 'SELECT * FROM creatives WHERE product_id = $1';
     const values = [id];
@@ -50,9 +53,8 @@ router.post('/products/:id/creatives', requireAuth, requireRole('admin', 'gestor
     const { id } = req.validated.params;
     const { folder, name, type, version, status, size, body_text, link, tags } = req.validated.body;
 
-    // Verify product exists
-    const prod = await client.query('SELECT id, name, workspace_id FROM products WHERE id = $1 AND archived_at IS NULL', [id]);
-    if (prod.rows.length === 0) throw AppError.notFound('Produto não encontrado');
+    const prod = await checkProductWorkspace(client, id, req.user.id);
+    if (prod.role === 'viewer') throw AppError.forbidden('Visualizadores não podem adicionar criativos');
 
     const { rows } = await client.query(
       `INSERT INTO creatives (product_id, folder, name, type, version, status, size, body_text, link, tags, added_by)
@@ -70,7 +72,7 @@ router.post('/products/:id/creatives', requireAuth, requireRole('admin', 'gestor
     await client.query(
       `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet, workspace_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      ['edit', id, prod.rows[0].name, req.user.id, 'adicionou criativo', `${folder}: ${name}`, prod.rows[0].workspace_id],
+      ['edit', id, prod.name, req.user.id, 'adicionou criativo', `${folder}: ${name}`, prod.workspace_id],
     );
 
     await client.query('COMMIT');
@@ -105,6 +107,16 @@ router.patch('/creatives/:id', requireAuth, requireRole('admin', 'gestor', 'edit
   try {
     const { id } = req.validated.params;
     const body = req.validated.body;
+
+    const creative = await pool.query(
+      `SELECT c.id, p.workspace_id, wm.role FROM creatives c
+       JOIN products p ON p.id = c.product_id
+       JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = $2
+       WHERE c.id = $1`,
+      [id, req.user.id],
+    );
+    if (creative.rows.length === 0) throw AppError.notFound('Criativo não encontrado ou sem acesso');
+    if (creative.rows[0].role === 'viewer') throw AppError.forbidden('Visualizadores não podem modificar criativos');
 
     const columnMap = {
       body_text: 'body_text',
@@ -145,9 +157,19 @@ router.patch('/creatives/:id', requireAuth, requireRole('admin', 'gestor', 'edit
 });
 
 // DELETE /creatives/:id
-router.delete('/creatives/:id', requireAuth, requireRole('admin', 'gestor', 'editor'), async (req, res, next) => {
+router.delete('/creatives/:id', requireAuth, requireRole('admin', 'gestor'), async (req, res, next) => {
   try {
     const { id } = req.params;
+
+    const creative = await pool.query(
+      `SELECT c.id, p.workspace_id, wm.role FROM creatives c
+       JOIN products p ON p.id = c.product_id
+       JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = $2
+       WHERE c.id = $1`,
+      [id, req.user.id],
+    );
+    if (creative.rows.length === 0) throw AppError.notFound('Criativo não encontrado ou sem acesso');
+
     const { rows } = await pool.query(
       'DELETE FROM creatives WHERE id = $1 RETURNING id',
       [id],
@@ -170,6 +192,16 @@ router.patch('/creatives/:id/folder', requireAuth, requireRole('admin', 'gestor'
     const { id } = req.validated.params;
     const { folder } = req.validated.body;
 
+    const creative = await pool.query(
+      `SELECT c.id, p.workspace_id, wm.role FROM creatives c
+       JOIN products p ON p.id = c.product_id
+       JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = $2
+       WHERE c.id = $1`,
+      [id, req.user.id],
+    );
+    if (creative.rows.length === 0) throw AppError.notFound('Criativo não encontrado ou sem acesso');
+    if (creative.rows[0].role === 'viewer') throw AppError.forbidden('Visualizadores não podem modificar criativos');
+
     const { rows } = await pool.query(
       'UPDATE creatives SET folder = $1 WHERE id = $2 RETURNING *',
       [folder, id],
@@ -185,10 +217,17 @@ router.post('/creatives/:id/duplicate', requireAuth, requireRole('admin', 'gesto
   try {
     const { id } = req.params;
 
-    const original = await pool.query('SELECT * FROM creatives WHERE id = $1', [id]);
-    if (original.rows.length === 0) throw AppError.notFound('Criativo não encontrado');
+    const creative = await pool.query(
+      `SELECT c.*, p.workspace_id, wm.role FROM creatives c
+       JOIN products p ON p.id = c.product_id
+       JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = $2
+       WHERE c.id = $1`,
+      [id, req.user.id],
+    );
+    if (creative.rows.length === 0) throw AppError.notFound('Criativo não encontrado ou sem acesso');
+    if (creative.rows[0].role === 'viewer') throw AppError.forbidden('Visualizadores não podem duplicar criativos');
 
-    const c = original.rows[0];
+    const c = creative.rows[0];
     const { rows } = await pool.query(
       `INSERT INTO creatives (product_id, folder, name, type, version, status, size, body_text, link, tags, added_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)

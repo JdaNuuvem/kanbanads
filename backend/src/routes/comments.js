@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { AppError } from '../lib/errors.js';
 import { emitToUser, emitToAll } from '../lib/sse.js';
+import { checkProductWorkspace } from '../lib/workspace.js';
 
 const router = Router();
 
@@ -23,6 +24,8 @@ function parseMentions(text) {
 router.get('/products/:id/comments', requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
+
+    await checkProductWorkspace(pool, id, req.user.id);
 
     const { rows } = await pool.query(
       `SELECT
@@ -62,11 +65,8 @@ router.post('/products/:id/comments', requireAuth, requireRole('admin', 'gestor'
     const { id } = req.validated.params;
     const { text } = req.validated.body;
 
-    const product = await client.query(
-      'SELECT id, name, workspace_id FROM products WHERE id = $1 AND archived_at IS NULL',
-      [id],
-    );
-    if (product.rows.length === 0) throw AppError.notFound('Produto não encontrado');
+    const product = await checkProductWorkspace(client, id, req.user.id);
+    if (product.role === 'viewer') throw AppError.forbidden('Visualizadores não podem comentar');
 
     const { rows: commentRows } = await client.query(
       'INSERT INTO comments (product_id, author_id, body) VALUES ($1, $2, $3) RETURNING *',
@@ -100,7 +100,7 @@ router.post('/products/:id/comments', requireAuth, requireRole('admin', 'gestor'
     const { rows: actRows } = await client.query(
       `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet, workspace_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      ['comment', id, product.rows[0].name, req.user.id, 'comentou em', text.length > 100 ? text.slice(0, 100) + '...' : text, product.rows[0].workspace_id],
+      ['comment', id, product.name, req.user.id, 'comentou em', text.length > 100 ? text.slice(0, 100) + '...' : text, product.workspace_id],
     );
 
     const commentActivityId = actRows[0].id;
@@ -129,7 +129,7 @@ router.post('/products/:id/comments', requireAuth, requireRole('admin', 'gestor'
       const { rows: mentionAct } = await client.query(
         `INSERT INTO activity (type, product_id, product_name, by_id, text, snippet, workspace_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-        ['mention', id, product.rows[0].name, req.user.id, 'mencionou em', text.length > 100 ? text.slice(0, 100) + '...' : text, product.rows[0].workspace_id],
+        ['mention', id, product.name, req.user.id, 'mencionou em', text.length > 100 ? text.slice(0, 100) + '...' : text, product.workspace_id],
       );
 
       await client.query(
@@ -154,11 +154,11 @@ router.post('/products/:id/comments', requireAuth, requireRole('admin', 'gestor'
         product_id: id,
         product_name: product.rows[0].name,
         by_name: req.user.name,
-        workspace_id: product.rows[0].workspace_id,
+        workspace_id: product.workspace_id,
       });
     }
 
-    emitToAll('activity.new', { activity_id: commentActivityId, product_id: id, workspace_id: product.rows[0].workspace_id });
+    emitToAll('activity.new', { activity_id: commentActivityId, product_id: id, workspace_id: product.workspace_id });
 
     res.status(201).json({ comment: { ...comment, mentions: mentionedIds } });
   } catch (err) {
@@ -178,7 +178,7 @@ const patchCommentSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
 });
 
-router.patch('/comments/:id', requireAuth, validate(patchCommentSchema), async (req, res, next) => {
+router.patch('/comments/:id', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(patchCommentSchema), async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -233,12 +233,16 @@ router.patch('/comments/:id', requireAuth, validate(patchCommentSchema), async (
 
 // ===== DELETE /comments/:id =====
 
-router.delete('/comments/:id', requireAuth, async (req, res, next) => {
+const deleteCommentSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+});
+
+router.delete('/comments/:id', requireAuth, validate(deleteCommentSchema), async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const { id } = req.params;
+    const { id } = req.validated.params;
 
     const comment = await client.query(
       'SELECT c.id, c.author_id, c.product_id, p.name AS product_name, p.workspace_id FROM comments c LEFT JOIN products p ON p.id = c.product_id WHERE c.id = $1',
@@ -250,6 +254,15 @@ router.delete('/comments/:id', requireAuth, async (req, res, next) => {
     // Author, gestor, or admin can delete
     if (comment.rows[0].author_id !== req.user.id && !['admin', 'gestor'].includes(req.user.role)) {
       throw AppError.forbidden('Sem permissão para excluir');
+    }
+
+    // Non-author admin/gestor must belong to the comment's workspace
+    if (comment.rows[0].author_id !== req.user.id && comment.rows[0].workspace_id) {
+      const wsMember = await client.query(
+        'SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2',
+        [comment.rows[0].workspace_id, req.user.id],
+      );
+      if (wsMember.rows.length === 0) throw AppError.forbidden('Você não pertence a este workspace');
     }
 
     await client.query('DELETE FROM comments WHERE id = $1', [id]);

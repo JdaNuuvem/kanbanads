@@ -128,14 +128,14 @@ const MetricsTab = ({ product, onUpdate }) => {
             const roas = m.cost > 0 ? m.revenue/m.cost : 0;
             return (
               <tr key={m.id}>
-                <td><input type="date" value={m.date} onChange={e => updateMetric(m.id, 'date', e.target.value)} /></td>
-                <td className="col-time"><input type="time" value={m.time} onChange={e => updateMetric(m.id, 'time', e.target.value)} /></td>
-                <td><input type="number" step="0.01" value={m.cost} onChange={e => updateMetric(m.id, 'cost', e.target.value)} /></td>
-                <td><input type="number" step="0.01" value={m.bid} onChange={e => updateMetric(m.id, 'bid', e.target.value)} /></td>
-                <td><input type="number" step="0.01" value={m.budget} onChange={e => updateMetric(m.id, 'budget', e.target.value)} /></td>
-                <td><input type="number" step="0.01" value={m.cpa} onChange={e => updateMetric(m.id, 'cpa', e.target.value)} /></td>
-                <td><input type="number" value={m.sales} onChange={e => updateMetric(m.id, 'sales', e.target.value)} /></td>
-                <td><input type="number" step="0.01" value={m.revenue} onChange={e => updateMetric(m.id, 'revenue', e.target.value)} /></td>
+                <td><input type="date" value={m.date || ''} onChange={e => updateMetric(m.id, 'date', e.target.value)} /></td>
+                <td className="col-time"><input type="time" value={m.time || ''} onChange={e => updateMetric(m.id, 'time', e.target.value)} /></td>
+                <td><input type="number" step="0.01" value={m.cost ?? ''} onChange={e => updateMetric(m.id, 'cost', e.target.value)} /></td>
+                <td><input type="number" step="0.01" value={m.bid ?? ''} onChange={e => updateMetric(m.id, 'bid', e.target.value)} /></td>
+                <td><input type="number" step="0.01" value={m.budget ?? ''} onChange={e => updateMetric(m.id, 'budget', e.target.value)} /></td>
+                <td><input type="number" step="0.01" value={m.cpa ?? ''} onChange={e => updateMetric(m.id, 'cpa', e.target.value)} /></td>
+                <td><input type="number" value={m.sales ?? ''} onChange={e => updateMetric(m.id, 'sales', e.target.value)} /></td>
+                <td><input type="number" step="0.01" value={m.revenue ?? ''} onChange={e => updateMetric(m.id, 'revenue', e.target.value)} /></td>
                 <td style={{ color: roasColor(roas), fontWeight: 600 }}>{roas.toFixed(2)}x</td>
                 <td className="col-note"><input type="text" value={m.note || ''} placeholder="—" onChange={e => updateMetric(m.id, 'note', e.target.value)} /></td>
                 <td><button className="btn btn-sm btn-ghost btn-icon" onClick={() => deleteMetric(m.id)}><Icon name="trash" size={12} /></button></td>

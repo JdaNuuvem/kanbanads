@@ -1,17 +1,9 @@
 import { Router } from 'express';
 import pool from '../config/db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireWorkspaceMember } from '../lib/workspace.js';
 
 const router = Router();
-
-// Helper: build workspace filter condition
-function wsFilter(params) {
-  const { workspace_id } = params;
-  if (workspace_id) {
-    return { clause: 'p.workspace_id = $1', values: [workspace_id], p: 1 };
-  }
-  return { clause: 'p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)', values: ['__user__'], p: 1 };
-}
 
 // GET /dashboard/funnel
 router.get('/dashboard/funnel', requireAuth, async (req, res, next) => {
@@ -21,6 +13,7 @@ router.get('/dashboard/funnel', requireAuth, async (req, res, next) => {
     let wsClause;
     let wsValues;
     if (workspace_id) {
+      await requireWorkspaceMember(pool, workspace_id, req.user.id);
       wsClause = 'p.workspace_id = $1';
       wsValues = [workspace_id];
     } else {
@@ -51,6 +44,7 @@ router.get('/dashboard/workload', requireAuth, async (req, res, next) => {
     let wsClause;
     let wsValues;
     if (workspace_id) {
+      await requireWorkspaceMember(pool, workspace_id, req.user.id);
       wsClause = 'p.workspace_id = $1';
       wsValues = [workspace_id];
     } else {
@@ -91,6 +85,7 @@ router.get('/dashboard/kpis', requireAuth, async (req, res, next) => {
     let wsClause;
     let wsValues;
     if (workspace_id) {
+      await requireWorkspaceMember(pool, workspace_id, req.user.id);
       wsClause = 'p.workspace_id = $1';
       wsValues = [workspace_id];
     } else {
@@ -125,6 +120,7 @@ router.get('/dashboard/timeline', requireAuth, async (req, res, next) => {
     let p = 0;
 
     if (workspace_id) {
+      await requireWorkspaceMember(pool, workspace_id, req.user.id);
       p++; conditions.push(`p.workspace_id = $${p}`); values.push(workspace_id);
     } else {
       p++; conditions.push(`p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $${p})`);

@@ -94,7 +94,7 @@ const createWorkspaceSchema = z.object({
   }),
 });
 
-router.post('/workspaces', requireAuth, validate(createWorkspaceSchema), async (req, res, next) => {
+router.post('/workspaces', requireAuth, requireRole('admin', 'gestor'), validate(createWorkspaceSchema), async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

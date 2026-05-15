@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import { AppError } from '../lib/errors.js';
 
 const router = Router();
@@ -41,7 +41,7 @@ const upload = multer({
 });
 
 // POST /uploads — upload direto (local dev / fallback)
-router.post('/uploads', requireAuth, upload.single('file'), (req, res) => {
+router.post('/uploads', requireAuth, requireRole('admin', 'gestor', 'editor'), upload.single('file'), (req, res) => {
   if (!req.file) throw AppError.validation('Nenhum arquivo enviado');
 
   const url = `/uploads/${req.file.filename}`;
@@ -56,7 +56,7 @@ router.post('/uploads', requireAuth, upload.single('file'), (req, res) => {
 
 // GET /uploads/sign — presigned URL (produção: S3/R2)
 // Se S3 não configurado, retorna URL para upload direto
-router.get('/uploads/sign', requireAuth, (req, res, next) => {
+router.get('/uploads/sign', requireAuth, requireRole('admin', 'gestor', 'editor'), (req, res, next) => {
   try {
     const { filename, contentType } = req.query;
 
@@ -91,6 +91,6 @@ router.get('/uploads/sign', requireAuth, (req, res, next) => {
 });
 
 // Servir arquivos estáticos
-router.use('/uploads', serveStatic(UPLOAD_DIR));
+router.use('/uploads', requireAuth, serveStatic(UPLOAD_DIR));
 
 export default router;

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../config/db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireWorkspaceMember } from '../lib/workspace.js';
 
 const router = Router();
 
@@ -14,6 +15,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 
     // Workspace filter
     if (workspace_id) {
+      await requireWorkspaceMember(pool, workspace_id, req.user.id);
       p++; conditions.push(`a.workspace_id = $${p}`); values.push(workspace_id);
     } else {
       // Show activity from all workspaces the user belongs to
@@ -81,6 +83,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
 
     let wsCondition = '';
     if (workspace_id) {
+      await requireWorkspaceMember(pool, workspace_id, req.user.id);
       wsCondition = `AND a.workspace_id = $${idx}`;
       values.push(workspace_id);
       idx++;
