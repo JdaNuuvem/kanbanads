@@ -20,11 +20,11 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'gestor';
   const folderList = window.folders?.length ? window.folders : ['CA1', 'CA2', 'CA3', 'CA4', 'UPSELLS', 'SOURCES', 'VARIAÇÕES'];
 
-  const handleAddFolder = async () => {
-    const name = newFolderName.trim().toUpperCase();
-    if (!name) return;
+  const handleAddFolder = async (name) => {
+    const folderName = (name || newFolderName).trim().toUpperCase();
+    if (!folderName) return;
     try {
-      await apiFolders.create(product.workspaceId, name);
+      await apiFolders.create(product.workspaceId, folderName);
       const d = await apiFolders.list(product.workspaceId);
       window.folders = (d.folders || []).map((f) => f.name);
       setNewFolderName('');
