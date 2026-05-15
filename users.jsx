@@ -86,7 +86,7 @@ const ManageTeamModal = ({ users, currentUserId, onClose, onUpdate }) => {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
 
-  const save = async () => { onUpdate(list); onClose(); };
+  const handleClose = () => { onUpdate(list); onClose(); };
 
   const removeUser = async (id) => {
     if (id === currentUserId) { setError('Não pode remover o usuário atual.'); return; }
@@ -101,7 +101,17 @@ const ManageTeamModal = ({ users, currentUserId, onClose, onUpdate }) => {
     }
   };
 
-  const updateUser = (id, patch) => setList((l) => l.map((u) => u.id === id ? { ...u, ...patch } : u));
+  const updateUser = async (id, patch) => {
+    setList((l) => l.map((u) => u.id === id ? { ...u, ...patch } : u));
+    try {
+      const data = await apiUsers.update(id, patch);
+      if (data.user) {
+        setList((l) => l.map((u) => u.id === id ? { ...u, ...data.user } : u));
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   const addUser = async () => {
     if (!draft.name.trim() || !draft.email.trim() || !draft.password) {
@@ -128,7 +138,7 @@ const ManageTeamModal = ({ users, currentUserId, onClose, onUpdate }) => {
   ];
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={handleClose}>
       <div className="mini-modal" onClick={(e) => e.stopPropagation()} style={{ width: 560 }}>
         <h3>Gerenciar equipe</h3>
         {error && <div className="toast toast-error" style={{ marginBottom: 12 }}>{error}</div>}
@@ -173,7 +183,7 @@ const ManageTeamModal = ({ users, currentUserId, onClose, onUpdate }) => {
           </button>
         )}
         <div className="form-actions">
-          <button className="btn" onClick={onClose}>Fechar</button>
+          <button className="btn" onClick={handleClose}>Fechar</button>
         </div>
       </div>
     </div>

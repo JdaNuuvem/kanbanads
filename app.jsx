@@ -71,14 +71,18 @@ const App = () => {
       setLoading(true);
       setError(null);
       try {
-        const [workspacesData, usersData] = await Promise.all([
-          apiWorkspaces.list(),
-          apiUsers.list(),
-        ]);
-
-        setUsers(usersData.users || []);
+        const workspacesData = await apiWorkspaces.list();
         const wsList = workspacesData.workspaces || [];
         setWorkspaces(wsList);
+
+        let usersList = [];
+        try {
+          const usersData = await apiUsers.list();
+          usersList = usersData.users || [];
+        } catch {
+          usersList = [currentUser];
+        }
+        setUsers(usersList);
 
         // Set current workspace: prefer last selected from localStorage, else default, else first
         const storedWsId = (() => { try { return localStorage.getItem('kanban_current_ws'); } catch { return null; } })();
@@ -704,7 +708,11 @@ const App = () => {
           users={users}
           currentUserId={currentUser.id}
           onClose={() => setShowManageTeam(false)}
-          onUpdate={(next) => setUsers(next)}
+          onUpdate={(next) => {
+            setUsers(next);
+            const me = next.find(u => u.id === currentUser.id);
+            if (me) setCurrentUser((prev) => ({ ...prev, ...me }));
+          }}
         />
       )}
 
