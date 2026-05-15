@@ -755,10 +755,10 @@ router.patch('/products/:id/checklist/:itemId', requireAuth, requireRole('admin'
 
     const { rows } = await client.query(
       `INSERT INTO product_checklist (product_id, item_id, done, done_at, done_by)
-       VALUES ($1, $2, $3, CASE WHEN $3 THEN now() ELSE NULL END, CASE WHEN $3 THEN $4 ELSE NULL END)
+       VALUES ($1, $2, $3, CASE WHEN $3 THEN now() ELSE NULL END, CASE WHEN $3 THEN $4::uuid ELSE NULL END)
        ON CONFLICT (product_id, item_id)
        DO UPDATE SET done = $3, done_at = CASE WHEN $3 THEN now() ELSE NULL END,
-                     done_by = CASE WHEN $3 THEN $4 ELSE NULL END
+                     done_by = CASE WHEN $3 THEN $4::uuid ELSE NULL END
        RETURNING *`,
       [id, itemId, done, req.user.id],
     );
