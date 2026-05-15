@@ -14,6 +14,7 @@ import exportImportRouter from './exportImport.js';
 import eventsRouter from './events.js';
 import uploadsRouter from './uploads.js';
 import workspacesRouter from './workspaces.js';
+import foldersRouter from './folders.js';
 
 const router = Router();
 
@@ -32,5 +33,6 @@ router.use('/', exportImportRouter);
 router.use('/', eventsRouter);
 router.use('/', uploadsRouter);
 router.use('/', workspacesRouter);
+router.use('/', foldersRouter);
 
 export default router;

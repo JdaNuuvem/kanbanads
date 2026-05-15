@@ -236,6 +236,12 @@ const apiWorkspaces = {
   leave: (id) => api.post(`/workspaces/${id}/leave`),
 };
 
+const apiFolders = {
+  list: (workspaceId) => api.get(`/folders?workspace_id=${workspaceId}`),
+  create: (workspaceId, name) => api.post('/folders', { workspace_id: workspaceId, name }),
+  remove: (workspaceId, name) => api.delete(`/folders/${encodeURIComponent(name)}?workspace_id=${workspaceId}`),
+};
+
 const apiUploads = {
   sign: (filename, contentType) => {
     const qs = new URLSearchParams({ filename, contentType }).toString();
@@ -316,6 +322,7 @@ window.apiDashboard = apiDashboard;
 window.apiCatalogs = apiCatalogs;
 window.apiExportImport = apiExportImport;
 window.apiWorkspaces = apiWorkspaces;
+window.apiFolders = apiFolders;
 window.apiUploads = apiUploads;
 window.sseClient = sseClient;
 window.getToken = getToken;

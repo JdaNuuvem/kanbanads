@@ -14,6 +14,33 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
   const [linkUrl, setLinkUrl] = React.useState('');
   const [linkName, setLinkName] = React.useState('');
   const [linkType, setLinkType] = React.useState('video');
+  const [showAddFolder, setShowAddFolder] = React.useState(false);
+  const [newFolderName, setNewFolderName] = React.useState('');
+
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'gestor';
+  const folderList = window.folders?.length ? window.folders : ['CA1', 'CA2', 'CA3', 'CA4', 'UPSELLS', 'SOURCES', 'VARIAÇÕES'];
+
+  const handleAddFolder = async () => {
+    const name = newFolderName.trim().toUpperCase();
+    if (!name) return;
+    try {
+      await apiFolders.create(product.workspaceId, name);
+      const d = await apiFolders.list(product.workspaceId);
+      window.folders = (d.folders || []).map((f) => f.name);
+      setNewFolderName('');
+      setShowAddFolder(false);
+    } catch { showError('Erro ao criar pasta'); }
+  };
+
+  const handleDeleteFolder = async (name) => {
+    if (!confirm(`Excluir pasta "${name}" e todos os criativos dentro dela?`)) return;
+    try {
+      await apiFolders.remove(product.workspaceId, name);
+      const d = await apiFolders.list(product.workspaceId);
+      window.folders = (d.folders || []).map((f) => f.name);
+      if (activeFolder === name) setActiveFolder(folderList[0] || 'CA1');
+    } catch { showError('Erro ao excluir pasta'); }
+  };
 
   const showError = (msg) => { setError(msg); setTimeout(() => setError(null), 5000); };
 
@@ -352,18 +379,28 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
         </div>
 
         <div className="modal-body">
-          {activeTab === 'pastas' && (
+            {activeTab === 'pastas' && (
             <div className="modal-sidebar">
               <div className="sidebar-section">
-                <div className="sidebar-section-title">Pastas</div>
+                <div className="sidebar-section-title">
+                  Pastas
+                  <FolderManager folderList={folderList} activeFolder={activeFolder} onAdd={handleAddFolder} onDelete={handleDeleteFolder} isAdmin={isAdmin} />
+                </div>
                 <div className="folder-list">
-                  {FOLDERS.map((f) => {
+                  {folderList.map((f) => {
                     const count = product.creatives[f]?.length || 0;
                     return (
                       <div key={f} className={`folder-item ${activeFolder === f ? 'active' : ''}`} onClick={() => setActiveFolder(f)}>
                         <Icon name="folder" size={14} className="folder-icon" />
                         <span>{f}</span>
                         <span className="folder-count">{count}</span>
+                        {isAdmin && folderList.length > 1 && (
+                          <button className="btn btn-sm btn-ghost btn-icon folder-delete-btn"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteFolder(f); }}
+                            title="Excluir pasta">
+                            <Icon name="x" size={10} />
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -537,6 +574,44 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
         </div>
       </div>
     </div>
+  );
+};
+
+const FolderManager = ({ folderList, activeFolder, onAdd, onDelete, isAdmin }) => {
+  if (!isAdmin) return null;
+
+  const [showInput, setShowInput] = React.useState(false);
+  const [newName, setNewName] = React.useState('');
+
+  const handleAdd = () => {
+    if (!newName.trim()) return;
+    onAdd(newName);
+    setNewName('');
+    setShowInput(false);
+  };
+
+  return (
+    <span style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
+      {showInput ? (
+        <>
+          <input
+            className="meta-input"
+            style={{ width: 80, height: 22, fontSize: 11, padding: '0 4px' }}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') setShowInput(false); }}
+            placeholder="NOME"
+            autoFocus
+          />
+          <button className="btn btn-sm btn-ghost btn-icon" onClick={handleAdd} title="Confirmar"><Icon name="check" size={12} /></button>
+          <button className="btn btn-sm btn-ghost btn-icon" onClick={() => setShowInput(false)} title="Cancelar"><Icon name="x" size={12} /></button>
+        </>
+      ) : (
+        <>
+          <button className="btn btn-sm btn-ghost btn-icon" onClick={() => setShowInput(true)} title="Adicionar pasta"><Icon name="plus" size={12} /></button>
+        </>
+      )}
+    </span>
   );
 };
 

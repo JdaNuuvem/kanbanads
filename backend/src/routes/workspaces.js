@@ -115,6 +115,14 @@ router.post('/workspaces', requireAuth, requireRole('admin', 'gestor'), validate
       [workspace.id, req.user.id, 'owner'],
     );
 
+    // Seed default folders
+    await client.query(
+      `INSERT INTO folders (workspace_id, name, position)
+       VALUES ($1, 'CA1', 1), ($1, 'CA2', 2), ($1, 'CA3', 3), ($1, 'CA4', 4),
+              ($1, 'UPSELLS', 5), ($1, 'SOURCES', 6), ($1, 'VARIAÇÕES', 7)`,
+      [workspace.id],
+    );
+
     await client.query('COMMIT');
 
     logger.info({ workspaceId: workspace.id, userId: req.user.id }, 'Workspace created');

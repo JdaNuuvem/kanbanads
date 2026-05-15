@@ -96,14 +96,17 @@ const App = () => {
 
         // Load products and activity for the active workspace
         if (activeWs) {
-          const [productsData, activityData, notifsData] = await Promise.all([
+          const [productsData, activityData, notifsData, foldersData] = await Promise.all([
             apiProducts.list({ workspace_id: activeWs.id, limit: 500 }),
             apiActivity.list({ workspace_id: activeWs.id, limit: 50 }),
             apiNotifications.list({ limit: 100 }),
+            apiFolders.list(activeWs.id),
           ]);
           setProducts((productsData.products || []).map(mapProduct));
           setActivity(activityData.activity || []);
           setNotifications(notifsData.notifications || []);
+          const folderNames = (foldersData.folders || []).map((f) => f.name);
+          window.folders = folderNames;
         }
       } catch (err) {
         setError(err.message);
@@ -159,11 +162,19 @@ const App = () => {
       setProducts((prev) => prev.filter((p) => p.id !== data.product_id));
     };
 
+    const onFoldersUpdated = (data) => {
+      if (currentWorkspace && data?.workspace_id && data.workspace_id !== currentWorkspace.id) return;
+      apiFolders.list(currentWorkspace?.id).then((d) => {
+        window.folders = (d.folders || []).map((f) => f.name);
+      }).catch(() => {});
+    };
+
     sseClient.on('notification.new', onNotification);
     sseClient.on('activity.new', onActivity);
     sseClient.on('product.updated', onProductUpdated);
     sseClient.on('product.created', onProductCreated);
     sseClient.on('product.deleted', onProductDeleted);
+    sseClient.on('folders.updated', onFoldersUpdated);
 
     return () => {
       sseClient.off('notification.new', onNotification);
@@ -171,6 +182,7 @@ const App = () => {
       sseClient.off('product.updated', onProductUpdated);
       sseClient.off('product.created', onProductCreated);
       sseClient.off('product.deleted', onProductDeleted);
+      sseClient.off('folders.updated', onFoldersUpdated);
     };
   }, [currentUser, currentWorkspace]);
 
@@ -430,12 +442,15 @@ const App = () => {
     localStorage.setItem('kanban_current_ws', ws.id);
     setLoading(true);
     try {
-      const [productsData, activityData] = await Promise.all([
+      const [productsData, activityData, foldersData] = await Promise.all([
         apiProducts.list({ workspace_id: ws.id, limit: 500 }),
         apiActivity.list({ workspace_id: ws.id, limit: 50 }),
+        apiFolders.list(ws.id),
       ]);
       setProducts((productsData.products || []).map(mapProduct));
       setActivity(activityData.activity || []);
+      const folderNames = (foldersData.folders || []).map((f) => f.name);
+      window.folders = folderNames;
     } catch (err) {
       setError(err.message);
     } finally {

@@ -165,12 +165,23 @@ CREATE TABLE product_checklist (
 );
 
 -- ============================================================================
--- CRIATIVOS (CA1, CA2, …, UPSELLS, SOURCES, VARIAÇÕES)
+-- PASTAS DE CRIATIVOS (por workspace, dinâmico)
+-- ============================================================================
+CREATE TABLE folders (
+  name         TEXT NOT NULL,
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  position     INT NOT NULL DEFAULT 0,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id, name)
+);
+
+-- ============================================================================
+-- CRIATIVOS
 -- ============================================================================
 CREATE TABLE creatives (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   product_id  UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  folder      TEXT NOT NULL CHECK (folder IN ('CA1','CA2','CA3','CA4','UPSELLS','SOURCES','VARIAÇÕES')),
+  folder      TEXT NOT NULL,
   name        TEXT NOT NULL,
   type        creative_type NOT NULL,
   version     SMALLINT NOT NULL DEFAULT 1,

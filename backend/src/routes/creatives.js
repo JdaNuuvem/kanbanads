@@ -32,7 +32,7 @@ router.get('/products/:id/creatives', requireAuth, async (req, res, next) => {
 // POST /products/:id/creatives
 const createCreativeSchema = z.object({
   body: z.object({
-    folder: z.enum(['CA1', 'CA2', 'CA3', 'CA4', 'UPSELLS', 'SOURCES', 'VARIAÇÕES']).default('CA1'),
+    folder: z.string().min(1).max(30).default('CA1'),
     name: z.string().min(1).max(200),
     type: z.enum(['video', 'image', 'copy']),
     version: z.number().int().min(1).default(1),
@@ -182,7 +182,7 @@ router.delete('/creatives/:id', requireAuth, requireRole('admin', 'gestor'), asy
 // PATCH /creatives/:id/folder
 const moveFolderSchema = z.object({
   body: z.object({
-    folder: z.enum(['CA1', 'CA2', 'CA3', 'CA4', 'UPSELLS', 'SOURCES', 'VARIAÇÕES']),
+    folder: z.string().min(1).max(30),
   }),
   params: z.object({ id: z.string().uuid() }),
 });

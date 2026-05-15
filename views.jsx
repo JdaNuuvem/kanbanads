@@ -203,7 +203,8 @@ const TableView = ({ products, users = [], onOpenProduct, onToggleFav }) => {
         <tbody>
           {sorted.map(p => {
             const agg = aggregateMetrics(p.metrics);
-            const totalCreatives = FOLDERS.reduce((s, f) => s + (p.creatives[f]?.length || 0), 0);
+            const folderList = window.folders || ['CA1', 'CA2', 'CA3', 'CA4', 'UPSELLS', 'SOURCES', 'VARIAÇÕES'];
+            const totalCreatives = folderList.reduce((s, f) => s + (p.creatives[f]?.length || 0), 0);
             const col = COLUMNS.find(c => c.id === p.column);
             return (
               <tr key={p.id} onClick={() => onOpenProduct(p.id)}>

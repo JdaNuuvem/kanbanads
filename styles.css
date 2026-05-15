@@ -352,10 +352,12 @@ input, textarea, select { font-family: inherit; }
 }
 .sidebar-section { padding: 14px 12px 8px; }
 .sidebar-section-title {
-  font-size: 10px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--text-3); padding: 0 8px 6px;
+  display: flex; align-items: center;
 }
+.folder-delete-btn { margin-left: auto; opacity: 0; transition: opacity .15s; }
+.folder-item:hover .folder-delete-btn { opacity: 1; }
 .folder-list { display: flex; flex-direction: column; gap: 1px; }
 .folder-item {
   height: 32px; padding: 0 10px;
