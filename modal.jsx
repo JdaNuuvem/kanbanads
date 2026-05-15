@@ -16,9 +16,15 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
   const [linkType, setLinkType] = React.useState('video');
   const [showAddFolder, setShowAddFolder] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState('');
+  const [folderList, setFolderList] = React.useState(() => window.folders?.length ? [...window.folders] : ['CA1', 'CA2', 'CA3', 'CA4', 'UPSELLS', 'SOURCES', 'VARIAÇÕES']);
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'gestor';
-  const folderList = window.folders?.length ? window.folders : ['CA1', 'CA2', 'CA3', 'CA4', 'UPSELLS', 'SOURCES', 'VARIAÇÕES'];
+
+  const refreshFolders = () => {
+    const list = window.folders?.length ? [...window.folders] : ['CA1', 'CA2', 'CA3', 'CA4', 'UPSELLS', 'SOURCES', 'VARIAÇÕES'];
+    setFolderList(list);
+    if (!list.includes(activeFolder)) setActiveFolder(list[0] || 'CA1');
+  };
 
   const handleAddFolder = async (name) => {
     const folderName = (name || newFolderName).trim().toUpperCase();
@@ -27,6 +33,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
       await apiFolders.create(product.workspaceId, folderName);
       const d = await apiFolders.list(product.workspaceId);
       window.folders = (d.folders || []).map((f) => f.name);
+      refreshFolders();
       setNewFolderName('');
       setShowAddFolder(false);
     } catch { showError('Erro ao criar pasta'); }
@@ -38,7 +45,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
       await apiFolders.remove(product.workspaceId, name);
       const d = await apiFolders.list(product.workspaceId);
       window.folders = (d.folders || []).map((f) => f.name);
-      if (activeFolder === name) setActiveFolder(folderList[0] || 'CA1');
+      refreshFolders();
     } catch { showError('Erro ao excluir pasta'); }
   };
 

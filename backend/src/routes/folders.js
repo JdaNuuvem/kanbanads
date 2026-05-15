@@ -28,10 +28,26 @@ router.get('/folders', requireAuth, async (req, res, next) => {
     if (!workspace_id) throw AppError.validation('workspace_id é obrigatório');
     await requireWorkspaceMember(pool, workspace_id, req.user.id);
 
-    const { rows } = await pool.query(
+    let { rows } = await pool.query(
       'SELECT name, position FROM folders WHERE workspace_id = $1 ORDER BY position, name',
       [workspace_id],
     );
+
+    // Auto-seed default folders if none exist for this workspace
+    if (rows.length === 0) {
+      await pool.query(
+        `INSERT INTO folders (workspace_id, name, position)
+         VALUES ($1, 'CA1', 1), ($1, 'CA2', 2), ($1, 'CA3', 3), ($1, 'CA4', 4),
+                ($1, 'UPSELLS', 5), ($1, 'SOURCES', 6), ($1, 'VARIAÇÕES', 7)
+         ON CONFLICT (workspace_id, name) DO NOTHING`,
+        [workspace_id],
+      );
+      ({ rows } = await pool.query(
+        'SELECT name, position FROM folders WHERE workspace_id = $1 ORDER BY position, name',
+        [workspace_id],
+      ));
+    }
+
     res.json({ folders: rows });
   } catch (err) { next(err); }
 });
