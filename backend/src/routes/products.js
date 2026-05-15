@@ -140,7 +140,7 @@ router.get('/products', requireAuth, async (req, res, next) => {
 
     const { rows } = await pool.query(
       `SELECT
-         p.id, p.name, p.stage_id, p.color, p.favorite, p.start_date, p.supplier,
+         p.id, p.name, p.stage_id, p.workspace_id, p.color, p.favorite, p.start_date, p.supplier,
          p.created_by, p.reserved_by, p.reserved_at, p.entered_stage_at, p.created_at, p.updated_at,
          ur.name AS reserved_by_name, ur.color AS reserved_by_color,
          COALESCE(

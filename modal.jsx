@@ -394,7 +394,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
                         <Icon name="folder" size={14} className="folder-icon" />
                         <span>{f}</span>
                         <span className="folder-count">{count}</span>
-                        {isAdmin && folderList.length > 1 && (
+                        {folderList.length > 1 && (
                           <button className="btn btn-sm btn-ghost btn-icon folder-delete-btn"
                             onClick={(e) => { e.stopPropagation(); handleDeleteFolder(f); }}
                             title="Excluir pasta">
