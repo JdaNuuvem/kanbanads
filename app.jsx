@@ -621,15 +621,36 @@ const App = () => {
       {/* Stats */}
       {view === 'kanban' && (
         <div className="stats">
-          {COLUMNS.map((c) => (
-            <div key={c.id} className="stat" title={c.title}>
-              <div className="stat-bar" style={{ background: c.color }} />
-              <div>
-                <div className="stat-num">{productsByColumn(c.id).length}</div>
-                <div className="stat-label">{c.title}</div>
+          {COLUMNS.map((c) => {
+            const colProducts = productsByColumn(c.id);
+            const colCost = colProducts.reduce((s, p) => {
+              const a = aggregateMetrics(p.metrics); return s + a.cost;
+            }, 0);
+            const colRevenue = colProducts.reduce((s, p) => {
+              const a = aggregateMetrics(p.metrics); return s + a.revenue;
+            }, 0);
+            const colProfit = colRevenue - colCost;
+            const colRoas = colCost > 0 ? colRevenue / colCost : 0;
+            return (
+              <div key={c.id} className="stat" title={`${c.title}: ${colProducts.length} produtos`}>
+                <div className="stat-bar" style={{ background: c.color }} />
+                <div style={{ flex: 1 }}>
+                  <div className="stat-num">{colProducts.length}</div>
+                  <div className="stat-label">{c.title}</div>
+                </div>
+                {colCost > 0 && (
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: colProfit >= 0 ? 'var(--accent)' : 'var(--danger)', fontFeatureSettings: '"tnum"' }}>
+                      {colProfit >= 0 ? '+' : ''}{formatBRL(colProfit)}
+                    </div>
+                    <div style={{ fontSize: 10, color: roasColor(colRoas), fontWeight: 500 }}>
+                      {colRoas.toFixed(2)}x
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -666,7 +687,8 @@ const App = () => {
                 onDragLeave={() => setDragOverColumn((prev) => prev === col.id ? null : prev)}
                 onDrop={(e) => handleColumnDrop(e, col.id)}
                 data-screen-label={`Column ${col.title}`}>
-                <div className="col-header">
+                <div className="col-header" style={{ position: 'relative' }}>
+                  <div className="col-header-tint" style={{ background: col.color }} />
                   <span className="col-dot" style={{ background: col.color }} />
                   <span className="col-title">{col.title}</span>
                   <span className="col-count">{items.length}</span>

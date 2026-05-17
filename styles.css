@@ -132,12 +132,12 @@ input, textarea, select { font-family: inherit; }
 
 /* Stats strip */
 .stats {
-  display: flex; gap: 6px; padding: 10px 20px;
+  display: flex; gap: 8px; padding: 10px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-1); flex-shrink: 0; overflow-x: auto;
 }
 .stat {
-  flex: 1; min-width: 110px; padding: 8px 12px;
+  flex: 1; min-width: 130px; padding: 8px 12px;
   background: var(--bg-2); border: 1px solid var(--border);
   border-radius: var(--radius);
   display: flex; align-items: center; gap: 10px;
@@ -162,7 +162,20 @@ input, textarea, select { font-family: inherit; }
   padding: 16px 20px 20px;
   overflow-x: auto; overflow-y: hidden;
   background: var(--bg-0); align-items: stretch;
+  background:
+    linear-gradient(to right, var(--bg-0) 0%, transparent 30px),
+    linear-gradient(to left, var(--bg-0) 0%, transparent 30px),
+    linear-gradient(to right, rgba(0,0,0,0.18), transparent 30px),
+    linear-gradient(to left, rgba(0,0,0,0.18), transparent 30px);
+  background-attachment: local, local, scroll, scroll;
+  background-position: left center, right center, left center, right center;
+  background-repeat: no-repeat;
+  background-size: 40px 100%, 40px 100%, 30px 100%, 30px 100%;
 }
+.board::-webkit-scrollbar { height: 8px; }
+.board::-webkit-scrollbar-track { background: var(--bg-1); border-radius: 4px; }
+.board::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+.board::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
 
 .column {
   flex: 0 0 296px; display: flex; flex-direction: column;
@@ -178,6 +191,10 @@ input, textarea, select { font-family: inherit; }
   padding: 12px 14px 10px; display: flex; align-items: center; gap: 8px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-1); position: sticky; top: 0; z-index: 1;
+}
+.col-header-tint {
+  position: absolute; inset: 0; opacity: 0.06;
+  pointer-events: none; border-radius: inherit;
 }
 .col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .col-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-1); }
@@ -213,7 +230,7 @@ input, textarea, select { font-family: inherit; }
 .card:hover { border-color: var(--border-strong); background: var(--bg-3); }
 .card.dragging { opacity: 0.4; cursor: grabbing; }
 .card.compact { padding: 8px 10px; gap: 6px; }
-.card.compact .card-folders, .card.compact .card-meta-extra { display: none; }
+.compact-folders { padding-top: 4px; border-top: 1px solid var(--border); }
 .card.stale {
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--danger) 50%, transparent);
 }
@@ -281,10 +298,11 @@ input, textarea, select { font-family: inherit; }
   padding: 1px 6px; background: var(--bg-3); border-radius: 3px;
 }
 .card-checklist-mini {
-  height: 3px; background: var(--bg-3); border-radius: 2px;
+  height: 6px; background: var(--bg-3); border-radius: 3px;
   overflow: hidden; flex: 1;
 }
-.card-checklist-mini-fill { height: 100%; background: var(--accent); transition: width .3s; }
+.card-checklist-mini-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
+.card-checklist-wrap { min-width: 60px; }
 
 /* Modal */
 .modal-backdrop {
@@ -690,6 +708,9 @@ input, textarea, select { font-family: inherit; }
   font-size: 13px; color: var(--text-1); cursor: pointer;
 }
 .popover-item:hover { background: var(--bg-3); color: var(--text-0); }
+.reserve-popover { max-height: 280px; overflow-y: auto; }
+.reserve-popover::-webkit-scrollbar { width: 4px; }
+.reserve-popover::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 .popover-item.danger:hover { color: var(--danger); }
 .popover-divider { height: 1px; background: var(--border); margin: 4px 0; }
 

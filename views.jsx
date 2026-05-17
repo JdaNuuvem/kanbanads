@@ -68,6 +68,7 @@ const Dashboard = ({ products, users = [], onOpenProduct }) => {
           {COLUMNS.map(c => {
             const count = products.filter(p => p.column === c.id).length;
             const pct = (count / funnelMax) * 100;
+            const isLight = !c.color.includes('0.7') && !c.color.includes('0.6') && !c.color.includes('0.5') && !c.color.includes('0.4');
             return (
               <div key={c.id} className="funnel-row">
                 <div className="funnel-label">
@@ -75,7 +76,7 @@ const Dashboard = ({ products, users = [], onOpenProduct }) => {
                   {c.title}
                 </div>
                 <div className="funnel-bar-wrap">
-                  <div className="funnel-bar" style={{ width: `${Math.max(pct, count > 0 ? 4 : 0)}%`, background: c.color }}>
+                  <div className="funnel-bar" style={{ width: `${Math.max(pct, count > 0 ? 4 : 0)}%`, background: c.color, color: isLight ? '#0a0b0d' : '#fff' }}>
                     {count > 0 && count}
                   </div>
                 </div>
@@ -181,20 +182,27 @@ const TableView = ({ products, users = [], onOpenProduct, onToggleFav }) => {
     else { setSortBy(col); setSortDir('asc'); }
   };
 
+  const totals = products.reduce((acc, p) => {
+    const a = aggregateMetrics(p.metrics);
+    acc.cost += a.cost; acc.revenue += a.revenue; acc.profit += a.profit; acc.sales += a.sales;
+    return acc;
+  }, { cost: 0, revenue: 0, profit: 0, sales: 0 });
+  const totalRoas = totals.cost > 0 ? totals.revenue / totals.cost : 0;
+
   return (
     <div className="table-view">
       <table className="products-table">
         <thead>
           <tr>
             <th style={{ width: 30 }}></th>
-            <th>Produto</th>
+            <th onClick={() => sort('name')} style={{ cursor: 'pointer' }}>Produto {sortBy === 'name' && (sortDir === 'asc' ? '↑' : '↓')}</th>
             <th>Resp.</th>
-            <th onClick={() => sort('column')}>Estágio</th>
-            <th onClick={() => sort('days')} style={{ textAlign: 'right' }}>Dias aqui</th>
-            <th onClick={() => sort('cost')} style={{ textAlign: 'right' }}>Gasto</th>
+            <th onClick={() => sort('column')} style={{ cursor: 'pointer' }}>Estágio {sortBy === 'column' && (sortDir === 'asc' ? '↑' : '↓')}</th>
+            <th onClick={() => sort('days')} style={{ textAlign: 'right', cursor: 'pointer' }}>Dias {sortBy === 'days' && (sortDir === 'asc' ? '↑' : '↓')}</th>
+            <th onClick={() => sort('cost')} style={{ textAlign: 'right', cursor: 'pointer' }}>Gasto {sortBy === 'cost' && (sortDir === 'asc' ? '↑' : '↓')}</th>
             <th style={{ textAlign: 'right' }}>Faturam.</th>
-            <th onClick={() => sort('profit')} style={{ textAlign: 'right' }}>Lucro</th>
-            <th onClick={() => sort('roas')} style={{ textAlign: 'right' }}>ROAS</th>
+            <th onClick={() => sort('profit')} style={{ textAlign: 'right', cursor: 'pointer' }}>Lucro {sortBy === 'profit' && (sortDir === 'asc' ? '↑' : '↓')}</th>
+            <th onClick={() => sort('roas')} style={{ textAlign: 'right', cursor: 'pointer' }}>ROAS {sortBy === 'roas' && (sortDir === 'asc' ? '↑' : '↓')}</th>
             <th style={{ textAlign: 'right' }}>Vendas</th>
             <th style={{ textAlign: 'center' }}>Criativos</th>
             <th>Labels</th>
@@ -238,6 +246,24 @@ const TableView = ({ products, users = [], onOpenProduct, onToggleFav }) => {
             );
           })}
         </tbody>
+        <tfoot>
+          <tr style={{ borderTop: '2px solid var(--border-strong)', fontWeight: 700, background: 'var(--bg-1)' }}>
+            <td></td>
+            <td style={{ color: 'var(--text-0)' }}>TOTAL ({products.length} produtos)</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td style={{ textAlign: 'right', color: 'var(--text-0)' }}>{formatBRL(totals.cost)}</td>
+            <td style={{ textAlign: 'right', color: 'var(--text-0)' }}>{formatBRL(totals.revenue)}</td>
+            <td style={{ textAlign: 'right', color: totals.profit >= 0 ? 'var(--accent)' : 'var(--danger)' }}>
+              {totals.profit >= 0 ? '+' : ''}{formatBRL(totals.profit)}
+            </td>
+            <td style={{ textAlign: 'right', color: roasColor(totalRoas) }}>{totalRoas.toFixed(2)}x</td>
+            <td style={{ textAlign: 'right', color: 'var(--text-0)' }}>{totals.sales}</td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   );

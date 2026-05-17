@@ -12,7 +12,7 @@ const ProductCard = ({ product, onOpen, onToggleFav, onToggleReserve, onOpenChec
   const doneCount = checklistItems.filter(i => product.checklist?.[i.id]).length;
   const checklistPct = checklistItems.length ? (doneCount / checklistItems.length) * 100 : 0;
   const initial = product.name.charAt(0).toUpperCase();
-  const showMetrics = (product.column === 'rodando' || product.column === 'escala' || product.column === 'morto') && agg.cost > 0;
+  const showMetrics = agg.cost > 0;
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'gestor';
   const [showReserveMenu, setShowReserveMenu] = React.useState(false);
 
@@ -32,10 +32,11 @@ const ProductCard = ({ product, onOpen, onToggleFav, onToggleReserve, onOpenChec
         <button
           className={`card-fav ${product.favorite ? 'active' : ''}`}
           onClick={(e) => { e.stopPropagation(); onToggleFav(product.id); }}
+          title={product.favorite ? 'Remover dos favoritos' : 'Favoritar'}
         >
           <Icon name={product.favorite ? 'starFill' : 'star'} size={14} />
         </button>
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative' }} ref={el => { if (el) el._cardRef = el; }}>
           <button
             className={`card-fav ${product.reserved_by ? 'active reserved' : ''}`}
             onClick={(e) => {
@@ -53,7 +54,7 @@ const ProductCard = ({ product, onOpen, onToggleFav, onToggleReserve, onOpenChec
             <Icon name="lock" size={12} />
           </button>
           {showReserveMenu && (
-            <div className="popover" style={{ right: 0, top: 28, minWidth: 160, zIndex: 100 }}
+            <div className="popover reserve-popover" style={{ right: -4, top: 30, minWidth: 170, zIndex: 100 }}
               onMouseLeave={() => setShowReserveMenu(false)}>
               {product.reserved_by ? (
                 <>
@@ -150,10 +151,11 @@ const ProductCard = ({ product, onOpen, onToggleFav, onToggleReserve, onOpenChec
         </span>
         {isStale && <span className="card-stale-badge">parado</span>}
         {checklistItems.length > 0 && (
-          <div className="card-checklist-mini" title={`Checklist: ${doneCount}/${checklistItems.length}`}
-               onClick={(e) => { e.stopPropagation(); onOpenChecklist && onOpenChecklist(product.id); }}
-               style={{ cursor: 'pointer' }}>
-            <div className="card-checklist-mini-fill" style={{ width: `${checklistPct}%` }} />
+          <div className="card-checklist-wrap" onClick={(e) => { e.stopPropagation(); onOpenChecklist && onOpenChecklist(product.id); }} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, flex: 1 }}>
+            <div className="card-checklist-mini" title={`Checklist: ${doneCount}/${checklistItems.length}`}>
+              <div className="card-checklist-mini-fill" style={{ width: `${checklistPct}%` }} />
+            </div>
+            <span style={{ fontSize: 9, color: checklistPct === 100 ? 'var(--accent)' : 'var(--text-3)', fontWeight: 600, whiteSpace: 'nowrap' }}>{doneCount}/{checklistItems.length}</span>
           </div>
         )}
         <span className="card-meta-item ml-auto" style={{ marginLeft: 'auto' }}>
@@ -161,12 +163,20 @@ const ProductCard = ({ product, onOpen, onToggleFav, onToggleReserve, onOpenChec
         </span>
       </div>
 
-      {!compact && (
+      {!compact ? (
         <div className="card-folders">
           {folderCounts.map(f => (
             <span key={f.name} className={`card-folder-pill ${f.count > 0 ? 'has' : ''}`}>
               {f.name === 'VARIAÇÕES' ? 'VAR' : f.name}
               {f.count > 0 && <strong>{f.count}</strong>}
+            </span>
+          ))}
+        </div>
+      ) : folderCounts.some(f => f.count > 0) && (
+        <div className="card-folders compact-folders">
+          {folderCounts.filter(f => f.count > 0).map(f => (
+            <span key={f.name} className="card-folder-pill has">
+              {f.name === 'VARIAÇÕES' ? 'VAR' : f.name}<strong>{f.count}</strong>
             </span>
           ))}
         </div>
