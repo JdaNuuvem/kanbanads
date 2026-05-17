@@ -517,6 +517,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
             <ChecklistTab product={product} onUpdate={onUpdate} />
           )}
 
+          {activeTab === 'pastas' && (
           <div className="modal-aside">
             <div className="aside-tabs">
               <button className={`aside-tab ${activeAside === 'comments' ? 'active' : ''}`} onClick={() => setActiveAside('comments')}>
@@ -589,6 +590,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
               </>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

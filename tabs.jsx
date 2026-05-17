@@ -1,6 +1,7 @@
 // Metrics tab — daily entries log
 const MetricsTab = ({ product, onUpdate }) => {
   const [adding, setAdding] = React.useState(false);
+  const [error, setError] = React.useState(null);
   const [draft, setDraft] = React.useState({
     time: new Date().toTimeString().slice(0,5),
     date: new Date().toISOString().slice(0,10),
@@ -16,21 +17,55 @@ const MetricsTab = ({ product, onUpdate }) => {
     });
   };
 
-  const deleteMetric = (id) => {
-    onUpdate({ ...product, metrics: product.metrics.filter(m => m.id !== id) });
+  const saveMetric = async (id) => {
+    if (typeof id === 'string' && id.startsWith('m')) return;
+    const metric = product.metrics.find(m => m.id === id);
+    if (!metric) return;
+    try {
+      await apiMetrics.update(id, {
+        date: metric.date,
+        time: metric.time || undefined,
+        cost: metric.cost,
+        bid: metric.bid || undefined,
+        budget: metric.budget || undefined,
+        sales: metric.sales,
+        revenue: metric.revenue,
+        note: metric.note || undefined,
+      });
+    } catch (err) {
+      setError(err.message || 'Erro ao salvar métrica');
+    }
   };
 
-  const addEntry = () => {
+  const deleteMetric = async (id) => {
+    const prev = product;
+    onUpdate({ ...product, metrics: product.metrics.filter(m => m.id !== id) });
+    if (typeof id === 'string' && id.startsWith('m')) return;
+    try {
+      await apiMetrics.remove(id);
+    } catch (err) {
+      setError(err.message || 'Erro ao excluir métrica');
+      onUpdate(prev);
+    }
+  };
+
+  const addEntry = async () => {
     const cost = +draft.cost || 0;
     const sales = +draft.sales || 0;
     const revenue = +draft.revenue || 0;
+    const entryDate = draft.date;
+    const entryTime = draft.time;
+    const entryNote = draft.note;
+    const bidVal = +draft.bid || 0;
+    const budgetVal = +draft.budget || 0;
     const newEntry = {
       id: 'm' + Date.now(),
-      time: draft.time, date: draft.date,
-      cost, bid: +draft.bid || 0, budget: +draft.budget || 0,
+      time: entryTime, date: entryDate,
+      cost, bid: bidVal, budget: budgetVal,
       cpa: sales > 0 ? +(cost/sales).toFixed(2) : (+draft.cpa || 0),
-      sales, revenue, note: draft.note,
+      sales, revenue, note: entryNote,
     };
+    const prev = product;
     onUpdate({
       ...product,
       metrics: [...product.metrics, newEntry],
@@ -38,12 +73,28 @@ const MetricsTab = ({ product, onUpdate }) => {
     });
     setDraft({ ...draft, cost: '', bid: '', budget: '', cpa: '', sales: '', revenue: '', note: '' });
     setAdding(false);
+    try {
+      await apiMetrics.create(product.id, {
+        date: entryDate,
+        time: entryTime,
+        cost,
+        bid: bidVal,
+        budget: budgetVal,
+        sales,
+        revenue,
+        note: entryNote || undefined,
+      });
+    } catch (err) {
+      setError(err.message || 'Erro ao criar métrica');
+      onUpdate(prev);
+    }
   };
 
   const sorted = [...product.metrics].sort((a,b) => (b.date + b.time).localeCompare(a.date + a.time));
 
   return (
     <div style={{ padding: '20px 24px', overflow: 'auto', flex: 1 }}>
+      {error && <div style={{ padding: '6px 10px', marginBottom: 12, background: 'var(--danger-dim)', color: 'var(--danger)', borderRadius: 6, fontSize: 12 }}>{error} <button onClick={() => setError(null)} style={{ marginLeft: 8, color: 'inherit', cursor: 'pointer', background: 'none', border: 'none', fontSize: 14 }}>×</button></div>}
       <div className="metrics-summary">
         <div className="metric-summary">
           <span className="metric-summary-label">Gasto total</span>
@@ -128,16 +179,16 @@ const MetricsTab = ({ product, onUpdate }) => {
             const roas = m.cost > 0 ? m.revenue/m.cost : 0;
             return (
               <tr key={m.id}>
-                <td><input type="date" value={m.date || ''} onChange={e => updateMetric(m.id, 'date', e.target.value)} /></td>
-                <td className="col-time"><input type="time" value={m.time || ''} onChange={e => updateMetric(m.id, 'time', e.target.value)} /></td>
-                <td><input type="number" step="0.01" value={m.cost ?? ''} onChange={e => updateMetric(m.id, 'cost', e.target.value)} /></td>
-                <td><input type="number" step="0.01" value={m.bid ?? ''} onChange={e => updateMetric(m.id, 'bid', e.target.value)} /></td>
-                <td><input type="number" step="0.01" value={m.budget ?? ''} onChange={e => updateMetric(m.id, 'budget', e.target.value)} /></td>
-                <td><input type="number" step="0.01" value={m.cpa ?? ''} onChange={e => updateMetric(m.id, 'cpa', e.target.value)} /></td>
-                <td><input type="number" value={m.sales ?? ''} onChange={e => updateMetric(m.id, 'sales', e.target.value)} /></td>
-                <td><input type="number" step="0.01" value={m.revenue ?? ''} onChange={e => updateMetric(m.id, 'revenue', e.target.value)} /></td>
+                <td><input type="date" value={m.date || ''} onChange={e => updateMetric(m.id, 'date', e.target.value)} onBlur={() => saveMetric(m.id)} /></td>
+                <td className="col-time"><input type="time" value={m.time || ''} onChange={e => updateMetric(m.id, 'time', e.target.value)} onBlur={() => saveMetric(m.id)} /></td>
+                <td><input type="number" step="0.01" value={m.cost ?? ''} onChange={e => updateMetric(m.id, 'cost', e.target.value)} onBlur={() => saveMetric(m.id)} /></td>
+                <td><input type="number" step="0.01" value={m.bid ?? ''} onChange={e => updateMetric(m.id, 'bid', e.target.value)} onBlur={() => saveMetric(m.id)} /></td>
+                <td><input type="number" step="0.01" value={m.budget ?? ''} onChange={e => updateMetric(m.id, 'budget', e.target.value)} onBlur={() => saveMetric(m.id)} /></td>
+                <td><input type="number" step="0.01" value={m.cpa ?? ''} onChange={e => updateMetric(m.id, 'cpa', e.target.value)} onBlur={() => saveMetric(m.id)} /></td>
+                <td><input type="number" value={m.sales ?? ''} onChange={e => updateMetric(m.id, 'sales', e.target.value)} onBlur={() => saveMetric(m.id)} /></td>
+                <td><input type="number" step="0.01" value={m.revenue ?? ''} onChange={e => updateMetric(m.id, 'revenue', e.target.value)} onBlur={() => saveMetric(m.id)} /></td>
                 <td style={{ color: roasColor(roas), fontWeight: 600 }}>{roas.toFixed(2)}x</td>
-                <td className="col-note"><input type="text" value={m.note || ''} placeholder="—" onChange={e => updateMetric(m.id, 'note', e.target.value)} /></td>
+                <td className="col-note"><input type="text" value={m.note || ''} placeholder="—" onChange={e => updateMetric(m.id, 'note', e.target.value)} onBlur={() => saveMetric(m.id)} /></td>
                 <td><button className="btn btn-sm btn-ghost btn-icon" onClick={() => deleteMetric(m.id)}><Icon name="trash" size={12} /></button></td>
               </tr>
             );
