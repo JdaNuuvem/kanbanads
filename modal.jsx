@@ -64,6 +64,13 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
     return () => { document.body.style.overflow = prev; document.removeEventListener('keydown', handler); };
   }, [onClose]);
 
+  // Fetch full product including comments on mount
+  React.useEffect(() => {
+    apiProducts.get(product.id).then((data) => {
+      if (data.product) onUpdate(mapProductLocally(data.product));
+    }).catch(() => {});
+  }, []);
+
   // Update basic fields via API
   const updateField = async (field, value) => {
     const next = { ...product, [field]: value };
@@ -264,6 +271,7 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
     id: p.id,
     name: p.name,
     column: p.stage_id,
+    workspaceId: p.workspace_id,
     color: p.color || 'oklch(0.72 0.12 240)',
     favorite: p.favorite,
     startDate: p.start_date ? new Date(p.start_date).toISOString().slice(0, 10) : null,

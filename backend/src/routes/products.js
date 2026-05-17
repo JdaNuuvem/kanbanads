@@ -214,12 +214,30 @@ router.get('/products/:id', requireAuth, async (req, res, next) => {
             FROM (SELECT id, product_id, folder, name, type, version, status, size, body_text, link, tags, ctr, cpm, spent, added_by, added_at, updated_at FROM creatives WHERE product_id = p.id ORDER BY added_at DESC) c),
            '[]'::json
          ) AS creatives,
-         COALESCE(
-           (SELECT json_agg(row_to_json(h.*) ORDER BY h.at DESC)
-            FROM (SELECT id, type, text, by_id, at FROM product_history WHERE product_id = p.id ORDER BY at DESC) h),
-           '[]'::json
-         ) AS history
-       FROM products p
+          COALESCE(
+            (SELECT json_agg(row_to_json(h.*) ORDER BY h.at DESC)
+             FROM (SELECT id, type, text, by_id, at FROM product_history WHERE product_id = p.id ORDER BY at DESC) h),
+            '[]'::json
+          ) AS history,
+          COALESCE(
+            (SELECT json_agg(c ORDER BY c.created_at DESC)
+             FROM (
+               SELECT
+                 c.id, c.product_id, c.author_id, c.body, c.edited_at, c.created_at,
+                 u.name AS author_name, u.color AS author_color,
+                 COALESCE(
+                   (SELECT json_agg(json_build_object('user_id', cm.user_id, 'name', mu.name))
+                    FROM comment_mentions cm JOIN users mu ON mu.id = cm.user_id
+                    WHERE cm.comment_id = c.id),
+                   '[]'::json
+                 ) AS mentions
+               FROM comments c
+               LEFT JOIN users u ON u.id = c.author_id
+               WHERE c.product_id = p.id
+             ) c),
+            '[]'::json
+          ) AS comments
+        FROM products p
        LEFT JOIN users ur ON ur.id = p.reserved_by
        WHERE p.id = $1`,
       [id],
