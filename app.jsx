@@ -346,16 +346,26 @@ const App = () => {
     }
   };
 
-  const toggleReserve = async (id) => {
+  const toggleReserve = async (id, userId) => {
     const product = products.find((pp) => pp.id === id);
     if (!product) return;
     try {
-      if (product.reserved_by) {
+      if (userId && product.reserved_by && product.reserved_by !== userId) {
+        await apiProducts.release(id);
+        const data = await apiProducts.reserve(id, userId);
+        const targetUser = users.find((u) => u.id === userId);
+        setProducts((prev) => prev.map((pp) =>
+          pp.id === id ? { ...pp, reserved_by: userId, reserved_by_name: data.reserved_by_name || targetUser?.name, reserved_at: new Date().toISOString() } : pp
+        ));
+      } else if (product.reserved_by && !userId) {
         await apiProducts.release(id);
         setProducts((prev) => prev.map((pp) => pp.id === id ? { ...pp, reserved_by: null, reserved_by_name: null, reserved_at: null } : pp));
       } else {
-        await apiProducts.reserve(id);
-        setProducts((prev) => prev.map((pp) => pp.id === id ? { ...pp, reserved_by: currentUser.id, reserved_by_name: currentUser.name, reserved_at: new Date().toISOString() } : pp));
+        const targetUser = userId ? users.find((u) => u.id === userId) : currentUser;
+        const data = await apiProducts.reserve(id, userId);
+        setProducts((prev) => prev.map((pp) =>
+          pp.id === id ? { ...pp, reserved_by: targetUser?.id || currentUser.id, reserved_by_name: data.reserved_by_name || targetUser?.name || currentUser.name, reserved_at: new Date().toISOString() } : pp
+        ));
       }
     } catch (err) {
       setError(err.message);
@@ -670,6 +680,7 @@ const App = () => {
                   {items.map((p) => (
                     <ProductCard key={p.id} product={p} compact={compact} users={users}
                       onOpen={setOpenProductId} onToggleFav={toggleFavorite} onToggleReserve={toggleReserve}
+                      currentUser={currentUser} setError={setError}
                       onDragStart={handleDragStart} onDragEnd={handleDragEnd}
                       isDragging={draggingId === p.id} />
                   ))}

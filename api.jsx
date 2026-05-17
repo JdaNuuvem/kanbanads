@@ -144,7 +144,7 @@ const apiProducts = {
   addChecklistItem: (id, itemId, text) => api.post(`/products/${id}/checklist`, { item_id: itemId, text }),
   removeChecklistItem: (id, itemId) => api.patch(`/products/${id}/checklist/${itemId}`, { done: false }),
   history: (id) => api.get(`/products/${id}/history`),
-  reserve: (id) => api.post(`/products/${id}/reserve`),
+  reserve: (id, userId) => api.post(`/products/${id}/reserve`, userId ? { user_id: userId } : undefined),
   release: (id) => api.post(`/products/${id}/release`),
 };
 

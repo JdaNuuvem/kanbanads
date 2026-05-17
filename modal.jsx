@@ -279,6 +279,9 @@ const ProductModal = ({ product, users = [], currentUser, onClose, onUpdate, onD
     labels: (p.labels || []).map((l) => l.id),
     assigneeIds: (p.assignees || []).map((a) => a.id),
     createdById: p.created_by,
+    reserved_by: p.reserved_by,
+    reserved_by_name: p.reserved_by_name,
+    reserved_at: p.reserved_at,
     creatives: (p.creatives || []).reduce((acc, c) => {
       if (!acc[c.folder]) acc[c.folder] = [];
       acc[c.folder].push({

@@ -1,5 +1,5 @@
 // Card with metrics, time-in-stage, checklist progress, assignee
-const ProductCard = ({ product, onOpen, onToggleFav, onToggleReserve, onOpenChecklist, onDragStart, onDragEnd, isDragging, compact, users = [] }) => {
+const ProductCard = ({ product, onOpen, onToggleFav, onToggleReserve, onOpenChecklist, onDragStart, onDragEnd, isDragging, compact, users = [], currentUser, setError }) => {
   const assigneeIds = product.assigneeIds || [];
   const folderList = window.folders || ['CA1', 'CA2', 'CA3', 'CA4', 'UPSELLS', 'SOURCES', 'VARIAÇÕES'];
   const folderCounts = folderList.map(f => ({ name: f, count: product.creatives[f]?.length || 0 }));
@@ -13,6 +13,8 @@ const ProductCard = ({ product, onOpen, onToggleFav, onToggleReserve, onOpenChec
   const checklistPct = checklistItems.length ? (doneCount / checklistItems.length) * 100 : 0;
   const initial = product.name.charAt(0).toUpperCase();
   const showMetrics = (product.column === 'rodando' || product.column === 'escala' || product.column === 'morto') && agg.cost > 0;
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'gestor';
+  const [showReserveMenu, setShowReserveMenu] = React.useState(false);
 
   return (
     <div
@@ -33,13 +35,76 @@ const ProductCard = ({ product, onOpen, onToggleFav, onToggleReserve, onOpenChec
         >
           <Icon name={product.favorite ? 'starFill' : 'star'} size={14} />
         </button>
-        <button
-          className={`card-fav ${product.reserved_by ? 'active reserved' : ''}`}
-          onClick={(e) => { e.stopPropagation(); onToggleReserve && onToggleReserve(product.id); }}
-          title={product.reserved_by ? `Reservado por ${product.reserved_by_name || 'alguém'} — clique para liberar` : 'Reservar para você'}
-        >
-          <Icon name="lock" size={12} />
-        </button>
+        <div style={{ position: 'relative' }}>
+          <button
+            className={`card-fav ${product.reserved_by ? 'active reserved' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (product.reserved_by) {
+                if (isAdmin) { setShowReserveMenu((v) => !v); }
+                else if (product.reserved_by === currentUser?.id) { onToggleReserve && onToggleReserve(product.id); }
+              } else {
+                if (isAdmin) { setShowReserveMenu((v) => !v); }
+                else { onToggleReserve && onToggleReserve(product.id); }
+              }
+            }}
+            title={product.reserved_by ? `Reservado por ${product.reserved_by_name || 'alguém'}` : 'Reservar'}
+          >
+            <Icon name="lock" size={12} />
+          </button>
+          {showReserveMenu && (
+            <div className="popover" style={{ right: 0, top: 28, minWidth: 160, zIndex: 100 }}
+              onMouseLeave={() => setShowReserveMenu(false)}>
+              {product.reserved_by ? (
+                <>
+                  <div className="popover-item"
+                    onClick={(e) => { e.stopPropagation(); onToggleReserve(product.id); setShowReserveMenu(false); }}>
+                    <Icon name="close" size={13} /> Liberar reserva
+                  </div>
+                  <div className="popover-divider" />
+                  <div style={{ padding: '6px 10px', fontSize: 10, color: 'var(--text-3)', fontWeight: 600 }}>RESERVAR PARA:</div>
+                  {users.filter((u) => u.active !== false).map((u) => (
+                    <div key={u.id} className="popover-item"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleReserve(product.id, u.id);
+                        setShowReserveMenu(false);
+                      }}>
+                      <span style={{
+                        display: 'inline-block', width: 14, height: 14, borderRadius: 3,
+                        background: u.color, marginRight: 8, verticalAlign: 'middle',
+                      }} />
+                      {u.name} {u.id === product.reserved_by ? '(atual)' : ''}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <div className="popover-item"
+                    onClick={(e) => { e.stopPropagation(); onToggleReserve(product.id); setShowReserveMenu(false); }}>
+                    <Icon name="lock" size={13} /> Reservar para mim
+                  </div>
+                  <div className="popover-divider" />
+                  <div style={{ padding: '6px 10px', fontSize: 10, color: 'var(--text-3)', fontWeight: 600 }}>RESERVAR PARA:</div>
+                  {users.filter((u) => u.id !== currentUser?.id && u.active !== false).map((u) => (
+                    <div key={u.id} className="popover-item"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleReserve(product.id, u.id);
+                        setShowReserveMenu(false);
+                      }}>
+                      <span style={{
+                        display: 'inline-block', width: 14, height: 14, borderRadius: 3,
+                        background: u.color, marginRight: 8, verticalAlign: 'middle',
+                      }} />
+                      {u.name}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {labels.length > 0 && !compact && (

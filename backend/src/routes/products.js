@@ -824,12 +824,25 @@ router.get('/products/:id/history', requireAuth, validate(idParamSchema), async 
 
 // ===== POST /products/:id/reserve =====
 
-router.post('/products/:id/reserve', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(idParamSchema), async (req, res, next) => {
+const reserveSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    user_id: z.string().uuid().optional(),
+  }).optional(),
+});
+
+router.post('/products/:id/reserve', requireAuth, requireRole('admin', 'gestor', 'editor'), validate(reserveSchema), async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     const { id } = req.validated.params;
+    const targetUserId = req.validated.body?.user_id || req.user.id;
+    const isReserveForOther = targetUserId !== req.user.id;
+
+    if (isReserveForOther && !['admin', 'gestor'].includes(req.user.role)) {
+      throw AppError.forbidden('Apenas admin ou gestor pode reservar para outra pessoa');
+    }
 
     const prod = await client.query(
       'SELECT id, name, reserved_by, workspace_id FROM products WHERE id = $1 AND archived_at IS NULL',
@@ -840,33 +853,50 @@ router.post('/products/:id/reserve', requireAuth, requireRole('admin', 'gestor',
     const wsMember = await checkWorkspaceMember(client, prod.rows[0].workspace_id, req.user.id);
     requireWorkspaceWrite(wsMember.role);
 
+    let targetUser = null;
+    if (isReserveForOther) {
+      const { rows } = await client.query(
+        'SELECT id, name FROM users WHERE id = $1 AND active = true',
+        [targetUserId],
+      );
+      if (rows.length === 0) throw AppError.notFound('Usuário não encontrado ou inativo');
+      targetUser = rows[0];
+    }
+
     if (prod.rows[0].reserved_by) {
-      // Already reserved — check if by someone else
-      if (prod.rows[0].reserved_by !== req.user.id) {
+      if (!isReserveForOther && prod.rows[0].reserved_by !== req.user.id) {
         const { rows: [owner] } = await client.query('SELECT name FROM users WHERE id = $1', [prod.rows[0].reserved_by]);
         throw AppError.conflict(`Produto já está reservado por ${owner?.name || 'outra pessoa'}`);
       }
-      // Already reserved by you — nothing to do
-      await client.query('COMMIT');
-      return res.json({ reserved_by: req.user.id, message: 'Você já reservou este produto' });
+      if (!isReserveForOther && prod.rows[0].reserved_by === req.user.id) {
+        await client.query('COMMIT');
+        return res.json({ reserved_by: req.user.id, message: 'Você já reservou este produto' });
+      }
     }
 
     await client.query(
       'UPDATE products SET reserved_by = $1, reserved_at = now() WHERE id = $2',
-      [req.user.id, id],
+      [targetUserId, id],
     );
 
-    await addHistory(client, id, 'edit', `Reservado por ${req.user.name}`, req.user.id);
+    const historyText = isReserveForOther
+      ? `Reservado para ${targetUser.name} por ${req.user.name}`
+      : `Reservado por ${req.user.name}`;
+    const activityText = isReserveForOther
+      ? `reservou o produto para ${targetUser.name}`
+      : 'reservou o produto';
+
+    await addHistory(client, id, 'edit', historyText, req.user.id);
     await addActivity(client, {
       type: 'edit', productId: id, productName: prod.rows[0].name,
-      byId: req.user.id, text: 'reservou o produto', workspaceId: prod.rows[0].workspace_id,
+      byId: req.user.id, text: activityText, workspaceId: prod.rows[0].workspace_id,
     });
 
     await client.query('COMMIT');
 
     emitToAll('product.updated', { product_id: id, workspace_id: prod.rows[0].workspace_id });
 
-    res.json({ reserved_by: req.user.id, reserved_at: new Date().toISOString() });
+    res.json({ reserved_by: targetUserId, reserved_at: new Date().toISOString(), reserved_by_name: targetUser?.name || req.user.name, reserved_for_other: isReserveForOther });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
